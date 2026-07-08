@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  Sistema de diseño "Butaca":
+  Inspirado en el terciopelo de un telón de teatro y las luces cálidas
+  de una marquesina.
+
+  Las variables de color (--background, --primary, etc.) NO se definen
+  acá: las inyecta el plugin de tailwind.config.js a partir de
+  src/site.config.js. Si querés cambiar colores, editá ese archivo.
+*/
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', sans-serif;
+  }
+  h1, h2, h3, h4, .font-display {
+    font-family: 'Fraunces', serif;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Ticket con borde perforado, como una entrada real */
+  .ticket-stub {
+    position: relative;
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+  }
+  .ticket-stub::before,
+  .ticket-stub::after {
+    content: '';
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    background: hsl(var(--background));
+    border: 1px solid hsl(var(--border));
+    border-radius: 999px;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+  .ticket-stub::before { left: -9px; }
+  .ticket-stub::after { right: -9px; }
+
+  .marquee-text {
+    text-shadow: 0 0 18px hsl(var(--primary) / 0.45);
+  }
+}

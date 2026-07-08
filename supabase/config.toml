@@ -1,0 +1,13 @@
+project_id = "tu-project-ref"
+
+[functions.create-payment-preference]
+verify_jwt = false
+
+[functions.mp-webhook]
+verify_jwt = false
+
+[functions.get-reservation-status]
+verify_jwt = false
+
+[functions.release-expired-holds]
+verify_jwt = false

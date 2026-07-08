@@ -1,0 +1,482 @@
+import React, { useEffect, useState } from 'react';
+import { CalendarDays, Image, MapPin, Pencil, Plus, Rocket, Trash2, XCircle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { useToast } from '@/components/ui/use-toast';
+import { formatCurrency, formatDateTime } from '@/lib/utils';
+import ImageManager from '@/components/admin/ImageManager';
+import {
+  addEventImage,
+  createEvent,
+  deleteEvent,
+  deleteEventImage,
+  getEventZonePrices,
+  listAllEvents,
+  listEventImages,
+  listVenues,
+  listZones,
+  publishEvent,
+  reorderEventImage,
+  setEventZonePrices,
+  updateEvent,
+} from '@/lib/api';
+
+const MAX_EVENT_IMAGES = 5;
+
+// Convierte un timestamp ISO (UTC) al formato que necesita un input
+// datetime-local (hora local del navegador, sin zona horaria).
+const toDatetimeLocalValue = (isoString) => {
+  if (!isoString) return '';
+  const d = new Date(isoString);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
+const STATUS_LABELS = {
+  draft: { label: 'Borrador', variant: 'secondary' },
+  scheduled: { label: 'Publicado', variant: 'default' },
+  cancelled: { label: 'Cancelado', variant: 'destructive' },
+  completed: { label: 'Finalizado', variant: 'secondary' },
+};
+
+const EventsTab = () => {
+  const { toast } = useToast();
+  const [events, setEvents] = useState([]);
+  const [venues, setVenues] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [form, setForm] = useState({ title: '', description: '', venue_id: '', event_date: '' });
+  const [pricingEventId, setPricingEventId] = useState(null);
+  const [editingEvent, setEditingEvent] = useState(null);
+  const [imagesEvent, setImagesEvent] = useState(null);
+
+  const reload = () => {
+    setLoading(true);
+    Promise.all([listAllEvents(), listVenues()])
+      .then(([e, v]) => {
+        setEvents(e);
+        setVenues(v);
+      })
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(reload, []);
+
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    try {
+      const event = await createEvent({
+        title: form.title,
+        description: form.description || null,
+        venue_id: form.venue_id,
+        event_date: new Date(form.event_date).toISOString(),
+        status: 'draft',
+      });
+      setDialogOpen(false);
+      setForm({ title: '', description: '', venue_id: '', event_date: '' });
+      reload();
+      setPricingEventId(event.id);
+    } catch (err) {
+      toast({ title: 'No pudimos crear el evento', description: err.message, variant: 'destructive' });
+    }
+  };
+
+  const handleCancel = async (id) => {
+    if (!confirm('¿Cancelar este evento? Ya no será visible al público.')) return;
+    await updateEvent(id, { status: 'cancelled' });
+    reload();
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm('¿Eliminar este borrador de evento?')) return;
+    try {
+      await deleteEvent(id);
+      reload();
+    } catch (err) {
+      toast({ title: 'No pudimos eliminar el evento', description: err.message, variant: 'destructive' });
+    }
+  };
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-6">
+        <p className="text-muted-foreground text-sm">Creá funciones, asignales una sala y publicalas para venderlas.</p>
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogTrigger asChild>
+            <Button>
+              <Plus className="h-4 w-4 mr-2" /> Nuevo evento
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Nuevo evento</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleCreate} className="space-y-4">
+              <div className="space-y-2">
+                <Label>Título de la obra / evento</Label>
+                <Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required />
+              </div>
+              <div className="space-y-2">
+                <Label>Descripción (opcional)</Label>
+                <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <Label>Sala</Label>
+                <select
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={form.venue_id}
+                  onChange={(e) => setForm({ ...form, venue_id: e.target.value })}
+                  required
+                >
+                  <option value="" disabled>
+                    Elegir sala…
+                  </option>
+                  {venues.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label>Fecha y hora</Label>
+                <Input
+                  type="datetime-local"
+                  value={form.event_date}
+                  onChange={(e) => setForm({ ...form, event_date: e.target.value })}
+                  required
+                />
+              </div>
+              <DialogFooter>
+                <Button type="submit">Crear evento</Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      {loading && <p className="text-muted-foreground text-sm">Cargando eventos…</p>}
+
+      <div className="space-y-4">
+        {events.map((event) => (
+          <Card key={event.id}>
+            <CardContent className="p-5 flex flex-col md:flex-row md:items-center gap-4 justify-between">
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-display text-lg">{event.title}</h3>
+                  <Badge variant={STATUS_LABELS[event.status]?.variant}>{STATUS_LABELS[event.status]?.label}</Badge>
+                </div>
+                <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <CalendarDays className="h-3.5 w-3.5" /> {formatDateTime(event.event_date)}
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <MapPin className="h-3.5 w-3.5" /> {event.venues?.name}
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setImagesEvent(event)} className="text-muted-foreground hover:text-gold p-2" title="Imágenes">
+                  <Image className="h-4 w-4" />
+                </button>
+                <button onClick={() => setEditingEvent(event)} className="text-muted-foreground hover:text-gold p-2" title="Editar">
+                  <Pencil className="h-4 w-4" />
+                </button>
+                {event.status === 'draft' && (
+                  <>
+                    <Button size="sm" onClick={() => setPricingEventId(event.id)}>
+                      <Rocket className="h-4 w-4 mr-2" /> Configurar precios y publicar
+                    </Button>
+                    <button onClick={() => handleDelete(event.id)} className="text-muted-foreground hover:text-destructive p-2">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </>
+                )}
+                {event.status === 'scheduled' && (
+                  <Button size="sm" variant="outline" onClick={() => handleCancel(event.id)}>
+                    <XCircle className="h-4 w-4 mr-2" /> Cancelar
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {pricingEventId && (
+        <EventPricingDialog
+          eventId={pricingEventId}
+          onClose={() => {
+            setPricingEventId(null);
+            reload();
+          }}
+        />
+      )}
+
+      {editingEvent && (
+        <EditEventDialog
+          event={editingEvent}
+          venues={venues}
+          onClose={() => setEditingEvent(null)}
+          onSaved={() => {
+            setEditingEvent(null);
+            reload();
+          }}
+        />
+      )}
+
+      {imagesEvent && <EventImagesDialog event={imagesEvent} onClose={() => setImagesEvent(null)} />}
+    </div>
+  );
+};
+
+const EventImagesDialog = ({ event, onClose }) => {
+  const [images, setImages] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const reload = () => {
+    setLoading(true);
+    listEventImages(event.id)
+      .then(setImages)
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(reload, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleUpload = async (file) => {
+    const nextSortOrder = images.length > 0 ? Math.max(...images.map((i) => i.sort_order)) + 1 : 0;
+    const created = await addEventImage(event.id, file, nextSortOrder);
+    setImages([...images, created]);
+  };
+
+  const handleDelete = async (image) => {
+    await deleteEventImage(image);
+    setImages(images.filter((i) => i.id !== image.id));
+  };
+
+  const handleReorder = async (imageA, imageB) => {
+    await reorderEventImage(imageA, imageB);
+    setImages(
+      images
+        .map((i) => {
+          if (i.id === imageA.id) return { ...i, sort_order: imageB.sort_order };
+          if (i.id === imageB.id) return { ...i, sort_order: imageA.sort_order };
+          return i;
+        })
+        .sort((a, b) => a.sort_order - b.sort_order)
+    );
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Imágenes de "{event.title}"</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground -mt-2">
+          La primera imagen es la que se muestra como portada en la cartelera. Si no subís ninguna, se muestra el
+          ícono por defecto.
+        </p>
+        {loading ? (
+          <p className="text-sm text-muted-foreground">Cargando imágenes…</p>
+        ) : (
+          <ImageManager
+            images={images}
+            maxImages={MAX_EVENT_IMAGES}
+            onUpload={handleUpload}
+            onDelete={handleDelete}
+            onReorder={handleReorder}
+          />
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Cerrar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+const EventPricingDialog = ({ eventId, onClose }) => {
+  const { toast } = useToast();
+  const [zones, setZones] = useState([]);
+  const [prices, setPrices] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [publishing, setPublishing] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const allEvents = await listAllEvents();
+      const current = allEvents.find((e) => e.id === eventId);
+      if (!current) return;
+      const [zonesData, overrides] = await Promise.all([listZones(current.venue_id), getEventZonePrices(eventId)]);
+      setZones(zonesData);
+      const priceMap = {};
+      zonesData.forEach((z) => {
+        const override = overrides.find((o) => o.zone_id === z.id);
+        priceMap[z.id] = override ? override.price : z.default_price;
+      });
+      setPrices(priceMap);
+      setLoading(false);
+    })();
+  }, [eventId]);
+
+  const handlePublish = async () => {
+    setPublishing(true);
+    try {
+      await setEventZonePrices(
+        eventId,
+        Object.entries(prices).map(([zone_id, price]) => ({ zone_id, price: Number(price) }))
+      );
+      await publishEvent(eventId);
+      toast({ title: 'Evento publicado', description: 'Ya está visible en la cartelera.' });
+      onClose();
+    } catch (err) {
+      toast({ title: 'No pudimos publicar el evento', description: err.message, variant: 'destructive' });
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Precios por zona</DialogTitle>
+        </DialogHeader>
+        {loading && <p className="text-sm text-muted-foreground">Cargando zonas de la sala…</p>}
+        {!loading && zones.length === 0 && (
+          <p className="text-sm text-destructive">Esta sala no tiene zonas ni butacas configuradas todavía.</p>
+        )}
+        {!loading && zones.length > 0 && (
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Podés dejar el precio por defecto de cada zona o ajustarlo especialmente para esta función.
+            </p>
+            {zones.map((zone) => (
+              <div key={zone.id} className="flex items-center gap-3">
+                <span className="h-4 w-4 rounded-full" style={{ backgroundColor: zone.color }} />
+                <span className="flex-1 text-sm">{zone.name}</span>
+                <Input
+                  type="number"
+                  className="w-32"
+                  value={prices[zone.id] ?? ''}
+                  onChange={(e) => setPrices({ ...prices, [zone.id]: e.target.value })}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+        <DialogFooter>
+          <Button onClick={handlePublish} disabled={loading || publishing || zones.length === 0}>
+            {publishing ? 'Publicando…' : 'Publicar evento'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+const EditEventDialog = ({ event, venues, onClose, onSaved }) => {
+  const { toast } = useToast();
+  const [form, setForm] = useState({
+    title: event.title,
+    description: event.description ?? '',
+    venue_id: event.venue_id,
+    event_date: toDatetimeLocalValue(event.event_date),
+  });
+  const [saving, setSaving] = useState(false);
+
+  const canChangeVenue = event.status === 'draft';
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const patch = {
+        title: form.title,
+        description: form.description || null,
+        event_date: new Date(form.event_date).toISOString(),
+      };
+      if (canChangeVenue) patch.venue_id = form.venue_id;
+      await updateEvent(event.id, patch);
+      toast({ title: 'Evento actualizado' });
+      onSaved();
+    } catch (err) {
+      toast({ title: 'No pudimos guardar los cambios', description: err.message, variant: 'destructive' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Editar evento</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label>Título de la obra / evento</Label>
+            <Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required />
+          </div>
+          <div className="space-y-2">
+            <Label>Descripción (opcional)</Label>
+            <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+          </div>
+          <div className="space-y-2">
+            <Label>Sala</Label>
+            <select
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:opacity-50"
+              value={form.venue_id}
+              onChange={(e) => setForm({ ...form, venue_id: e.target.value })}
+              disabled={!canChangeVenue}
+              required
+            >
+              {venues.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name}
+                </option>
+              ))}
+            </select>
+            {!canChangeVenue && (
+              <p className="text-xs text-muted-foreground">
+                Este evento ya está publicado, así que su mapa de butacas ya se generó a partir de esta sala. Para
+                cambiarlo de sala, creá un evento nuevo.
+              </p>
+            )}
+          </div>
+          <div className="space-y-2">
+            <Label>Fecha y hora</Label>
+            <Input
+              type="datetime-local"
+              value={form.event_date}
+              onChange={(e) => setForm({ ...form, event_date: e.target.value })}
+              required
+            />
+          </div>
+          <DialogFooter>
+            <Button type="submit" disabled={saving}>
+              {saving ? 'Guardando…' : 'Guardar cambios'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+export default EventsTab;
