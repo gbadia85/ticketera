@@ -346,6 +346,7 @@ const VenueEditor = ({ venueId }) => {
           </CardContent>
         </Card>
       ) : (
+      <>
       <Card>
         <CardHeader>
           <CardTitle className="text-lg flex items-center gap-2">
@@ -537,6 +538,7 @@ const VenueEditor = ({ venueId }) => {
           )}
         </CardContent>
       </Card>
+      </>
       )}
     </div>
   );
