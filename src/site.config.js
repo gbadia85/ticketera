@@ -23,8 +23,8 @@ export const siteConfig = {
   // IDENTIDAD: nombre, logo, título de pestaña del navegador
   // -------------------------------------------------------------------
   identity: {
-    siteName: 'Butaca',
-    tagline: 'Venta de entradas y mapa de asientos',
+    siteName: 'Aburridos Producciones',
+    tagline: 'Salas, Eventos y Venta de Entradas',
 
     // Título y descripción que aparecen en la pestaña del navegador y
     // en resultados de búsqueda / al compartir el link.
@@ -183,17 +183,17 @@ export const siteConfig = {
     text: 'Butaca — Venta de entradas y mapa de asientos.',
     copyright: '© {year} Butaca. Todos los derechos reservados.',
     contact: {
-      phone: '', // ej: '+54 9 11 1234-5678'
-      email: '', // ej: 'contacto@butaca.com'
-      address: '', // ej: 'Av. Corrientes 1234, CABA'
+      phone: '+543462317497', // ej: '+54 9 11 1234-5678'
+      email: 'eventos@aburridosproducciones.com.ar', // ej: 'contacto@butaca.com'
+      address: '12 de octubre 394, Murphy', // ej: 'Av. Corrientes 1234, CABA'
     },
     social: [
-      { platform: 'instagram', url: '' },
+      { platform: 'instagram', url: 'https://www.instagram.com/aburridospeligrososmurphy/' },
       { platform: 'facebook', url: '' },
       { platform: 'x', url: '' },
-      { platform: 'youtube', url: '' },
+      { platform: 'youtube', url: 'https://www.youtube.com/@Aburridos-Producciones' },
       { platform: 'tiktok', url: '' },
-      { platform: 'whatsapp', url: '' },
+      { platform: 'whatsapp', url: 'https://wa.me/5493462317497' },
     ],
   },
 
