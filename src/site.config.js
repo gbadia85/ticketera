@@ -99,6 +99,10 @@ export const siteConfig = {
       payButtonPrefix: 'Pagar',
       payingButton: 'Redirigiendo a Mercado Pago…',
       summaryTitle: 'Resumen de compra',
+      mockModeNotice: 'Modo de prueba: este pago es simulado, no se cobra nada de verdad.',
+      mockPaymentMethodDescription: 'Modo de prueba activo: al tocar "Pagar" se simula el pago y se confirma la compra al instante.',
+      mockProcessingTitle: 'Procesando pago…',
+      mockProcessingSubtitle: 'Esto es una simulación, no se está cobrando nada.',
     },
   },
 

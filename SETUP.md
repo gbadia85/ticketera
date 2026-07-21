@@ -142,6 +142,16 @@ completo en el SQL Editor. Esta migración además:
 
 Es seguro correrla aunque ya tengas datos cargados.
 
+### 1.2.4 — Aplicar la migración 0006 (caja, venta en puerta, check-in QR)
+
+Agrega todo lo necesario para vender entradas en la puerta el día del
+evento y controlar el ingreso con lector de QR: la tabla de caja
+(`cash_shifts`, con apertura/cierre y arqueo), y las columnas y
+funciones para marcar el check-in de cada entrada.
+
+Corré **`supabase/migrations/0006_door_sales_checkin_payments.sql`**
+completo en el SQL Editor.
+
 ### 1.3 — (Opcional) Cargar datos de ejemplo
 
 Si querés una sala y un evento de prueba ya armados para no cargar todo
@@ -195,10 +205,38 @@ supabase functions deploy create-payment-preference
 supabase functions deploy mp-webhook
 supabase functions deploy get-reservation-status
 supabase functions deploy release-expired-holds
+supabase functions deploy mock-confirm-payment
+supabase functions deploy create-door-sale
 ```
 
 Anotá la URL base que te va a hacer falta más adelante:
 `https://TU-PROJECT-REF.supabase.co/functions/v1/mp-webhook`
+
+---
+
+## Parte 2.5 — (Opcional) Pagos simulados, para probar sin Mercado Pago todavía
+
+Si todavía no querés meterte con Mercado Pago y preferís probar primero
+el resto del sistema (venta en puerta, mail con QR, check-in), podés
+activar el modo de pago simulado: al comprador que toca "Pagar" se le
+confirma la compra al instante, sin ir a ninguna pasarela real.
+
+1. En tu `.env` local (y en las variables de entorno de Render cuando
+   despliegues), agregá:
+   ```
+   VITE_PAYMENT_MODE=mock
+   ```
+2. En Supabase, seteá el secret que habilita esto también del lado del
+   servidor (la función se niega a confirmar pagos si este secret no
+   está, aunque alguien intente llamarla directo):
+   ```bash
+   supabase secrets set PAYMENT_MODE=mock
+   ```
+
+**Para volver a pagos reales más adelante**: sacá `VITE_PAYMENT_MODE`
+del `.env` (o poné `VITE_PAYMENT_MODE=mercadopago`), y en Supabase
+corré `supabase secrets unset PAYMENT_MODE` (o seteala en cualquier
+valor que no sea `mock`). No hace falta tocar código en ningún lado.
 
 ---
 
@@ -342,6 +380,71 @@ Header: Authorization: Bearer TU_ANON_KEY
    supabase functions deploy create-payment-preference
    supabase functions deploy mp-webhook
    ```
+
+---
+
+## Parte 7 — Deploy automático con `scripts/deploy.sh`
+
+Una vez que todo funciona localmente, `scripts/deploy.sh` te deja subir
+cualquier cambio futuro (código nuevo que te vaya pasando) a GitHub, a
+Supabase (migraciones + Edge Functions) y a Render (que se despliega
+solo al detectar el push) con un solo comando.
+
+### 7.1 — Paso único antes de usarlo por primera vez
+
+Hasta ahora corriste las migraciones (`0001` a `0006`) a mano, pegándolas
+en el SQL Editor de Supabase. El script en cambio usa `supabase db push`,
+que lleva un registro de qué migraciones ya se aplicaron — pero como
+esas primeras las corriste vos a mano, la CLI todavía no sabe que ya
+están aplicadas. Si no le avisás, va a intentar correrlas de nuevo y va
+a fallar (con un error de "ya existe", sin romper nada — pero no vas a
+poder seguir).
+
+Así que, **una sola vez**, "bautizá" cada migración que ya corriste
+como ya aplicada (ejecutá esto desde la carpeta del proyecto, con la
+CLI ya logueada y linkeada — Parte 2.1):
+
+```bash
+supabase migration repair --status applied 0001
+supabase migration repair --status applied 0002
+supabase migration repair --status applied 0003
+supabase migration repair --status applied 0004
+supabase migration repair --status applied 0005
+supabase migration repair --status applied 0006
+```
+
+Verificá que quedó todo sincronizado:
+
+```bash
+supabase migration list
+```
+
+Deberías ver las 6 migraciones marcadas como aplicadas tanto local
+como remotamente. De acá en más, cualquier migración *nueva* que
+agreguemos (`0007...`, `0008...`) se aplica sola con `supabase db push`
+— no hace más falta pegar nada a mano en el SQL Editor.
+
+### 7.2 — Usarlo de acá en adelante
+
+Cada vez que te pase archivos nuevos (código y, si corresponde, una
+migración `NNNN_algo.sql`), lo que tenés que hacer es:
+
+1. Reemplazar/agregar esos archivos en tu carpeta del proyecto.
+2. Correr:
+   ```bash
+   ./scripts/deploy.sh "lo que cambió, en una frase"
+   ```
+
+Eso sube el código a GitHub (Render lo despliega solo), aplica
+cualquier migración nueva en Supabase, y redespliega todas las Edge
+Functions. Si no le pasás un mensaje, usa la fecha y hora como mensaje
+del commit.
+
+Si en tu sistema el archivo no tiene permiso de ejecución (pasa a
+veces al descomprimir un zip), corré una vez:
+```bash
+chmod +x scripts/deploy.sh
+```
 
 ---
 

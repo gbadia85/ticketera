@@ -75,7 +75,10 @@ funcionalidad.
 | `VenueEditor.jsx` | El editor de una sala: datos básicos, **descripción**, **imágenes de la sala**, zonas de precio (con paleta de colores acotada), y la grilla de butacas (generar, pintar por zona, marcar pasillos, **mover butacas** para armar formas en U/herradura). |
 | `EventsTab.jsx` | Lista de eventos: crear, **editar** (título/descripción/fecha, y sala si es borrador), **gestionar imágenes** (hasta 5, con portada y reorden), configurar precios por zona, publicar, cancelar, eliminar borradores. |
 | `ImageManager.jsx` | Componente reutilizable de subida/borrado/reorden de imágenes, usado tanto por `EventsTab` como por `VenueEditor`. |
-| `ReservationsTab.jsx` | Lista de reservas (quién compró qué, para qué evento, estado del pago). |
+| `ReservationsTab.jsx` | Lista de reservas (quién compró qué, para qué evento, medio de pago, estado del pago y si ya ingresó). |
+| `DoorSalesTab.jsx` | Venta en puerta: abrir/cerrar caja (con arqueo), elegir butacas en el mapa, cargar comprador y cobrar en efectivo — muestra el QR de cada entrada vendida. |
+| `QrScannerTab.jsx` | Lector de QR por cámara (con `jsqr`) para marcar el ingreso de cada entrada el día del evento; tiene un modo manual de respaldo si la cámara no anda. |
+| `LiveEntryBoard.jsx` | Pantalla en vivo para el día del evento: mapa de butacas vendidas + lista de ingresos en tiempo real, para la persona de boletería. |
 | `DangerZoneTab.jsx` | Pestaña "Peligro": borrar todos los eventos / todas las salas / resetear la base completa, con confirmación escrita. |
 
 #### `src/components/ui/`
@@ -90,8 +93,8 @@ probablemente el problema esté en uno de estos archivos.
 | Archivo | Para qué sirve |
 |---|---|
 | `supabaseClient.js` | Crea el cliente de Supabase usando las variables de `.env`. |
-| `api.js` | Todas las consultas a la base de datos: salas, zonas, butacas, eventos, reservas, **imágenes (subida/borrado/reorden de eventos y salas)**, y las acciones de la Zona de Peligro. Si necesitás agregar una consulta nueva a Supabase, va acá. |
-| `booking.js` | El flujo de compra: retener butacas (`holdSeats`), crear la reserva pendiente, pedir la preferencia de pago a la Edge Function, consultar el estado del pago. |
+| `api.js` | Todas las consultas a la base de datos: salas, zonas, butacas, eventos, reservas, **imágenes** (subida/borrado/reorden de eventos y salas), **caja** (abrir/cerrar/arqueo), **check-in** de entradas, y las acciones de la Zona de Peligro. Si necesitás agregar una consulta nueva a Supabase, va acá. |
+| `booking.js` | El flujo de compra: retener butacas (`holdSeats`), crear la reserva pendiente, pedir la preferencia de pago a la Edge Function (o confirmarla al instante en modo simulado), consultar el estado del pago, y la venta en puerta (`createDoorSale`). |
 | `session.js` | Genera y guarda un ID anónimo por navegador (para saber qué butacas retuvo cada comprador sin necesidad de login). |
 | `seatColors.js` | Traduce el estado de una butaca (disponible/seleccionada/vendida/etc.) al color que le corresponde. Los colores en sí vienen de `site.config.js` — este archivo solo tiene la lógica de "qué color según qué estado". |
 | `utils.js` | Funciones chicas de formato: `cn` (combinar clases de Tailwind), `formatCurrency`, `formatDateTime`, `formatDateShort`. |
@@ -101,6 +104,7 @@ probablemente el problema esté en uno de estos archivos.
 | Archivo | Para qué sirve |
 |---|---|
 | `useEventSeats.js` | Carga las butacas de un evento y se suscribe a Supabase Realtime: si otro comprador retiene/compra algo, el mapa se actualiza solo. |
+| `useEventCheckins.js` | Carga las reservas aprobadas de un evento (con su estado de ingreso) y se suscribe a Realtime — la usa la pantalla en vivo para actualizarse sola cuando alguien escanea un QR en la puerta. |
 | `useCountdown.js` | Cuenta regresiva del hold de 10 minutos en el checkout. |
 | `useAdminAuth.js` | Maneja la sesión de Supabase Auth del panel de administración (login/logout). |
 
@@ -112,6 +116,7 @@ probablemente el problema esté en uno de estos archivos.
 |---|---|
 | `config.toml` | Configuración de la Supabase CLI (qué Edge Functions no requieren JWT). |
 | `seed_demo.sql` | Datos de ejemplo opcionales (una sala + evento de prueba), para probar el flujo sin cargar todo a mano. |
+| `scripts/deploy.sh` | Un solo comando para publicar todo: sube el código a GitHub, aplica migraciones nuevas en Supabase y redespliega las Edge Functions (Render se dispara solo con el push). Ver SETUP.md, Parte 7. |
 
 ### `supabase/migrations/` — Esquema de la base de datos (correr en orden)
 
@@ -122,6 +127,7 @@ probablemente el problema esté en uno de estos archivos.
 | `0003_fix_hold_seats_for_update.sql` | Corrige "FOR UPDATE is not allowed with aggregate functions" al reservar butacas. |
 | `0004_swap_seat_positions.sql` | Agrega la función que permite "mover" butacas de lugar en el editor de sala. |
 | `0005_images_and_venue_description.sql` | Agrega imágenes de evento y de sala (tablas `event_images`/`venue_images` + buckets de Storage), y la descripción de sala. |
+| `0006_door_sales_checkin_payments.sql` | Agrega la caja (`cash_shifts`, apertura/cierre con arqueo), el método de pago de cada reserva (Mercado Pago / efectivo / simulado), y el check-in por QR (`checked_in_at`, `check_in_reservation`). |
 
 ### `supabase/functions/` — Edge Functions (código de servidor)
 
@@ -129,9 +135,13 @@ probablemente el problema esté en uno de estos archivos.
 |---|---|
 | `_shared/cors.ts` | Código compartido entre funciones: headers CORS, y `getServiceRoleKey()` (obtiene la clave de servidor sin importar si tu proyecto usa el sistema de claves viejo o nuevo de Supabase). |
 | `create-payment-preference/index.ts` | Arma la preferencia de pago en Mercado Pago para una reserva y devuelve el link de pago. |
-| `mp-webhook/index.ts` | Recibe la confirmación de pago de Mercado Pago. Es el ÚNICO lugar donde una butaca pasa a "vendida" de verdad, y donde se dispara el email de confirmación. |
+| `mp-webhook/index.ts` | Recibe la confirmación de pago de Mercado Pago. Es el ÚNICO lugar donde una butaca pasa a "vendida" por un pago online, y donde se dispara el email de confirmación (con el QR). |
+| `mock-confirm-payment/index.ts` | Confirma una reserva al instante sin Mercado Pago — solo funciona si el secret `PAYMENT_MODE=mock` está seteado. Para probar el resto del flujo sin pagos reales. |
+| `create-door-sale/index.ts` | Venta en puerta: retiene butacas, crea la reserva y la marca pagada en efectivo contra una caja abierta, todo en un paso. Devuelve el QR de la entrada. Requiere admin logueado. |
 | `get-reservation-status/index.ts` | Consulta el estado de una reserva (la usa la pantalla de resultado del pago). |
 | `release-expired-holds/index.ts` | Libera butacas cuyo hold de 10 minutos venció. Alternativa a `pg_cron` si tu plan de Supabase no lo soporta. |
+| `_shared/qr.ts` | Genera el QR (PNG en base64) de una reserva — lo usan `mp-webhook`, `mock-confirm-payment` y `create-door-sale`. |
+| `_shared/email.ts` | Arma y envía el mail de confirmación de compra, con el QR incrustado y adjunto. |
 
 ---
 
@@ -140,6 +150,10 @@ probablemente el problema esté en uno de estos archivos.
 - **"Quiero cambiar el nombre del sitio / el logo / los colores"** → `src/site.config.js`
 - **"Quiero cambiar un texto que ve el comprador"** → `src/site.config.js` (sección `texts`); si el texto no está ahí todavía, buscalo en la página correspondiente dentro de `src/pages/`
 - **"El mapa de butacas se ve raro"** → `src/components/SeatMap.jsx` (mapa del comprador) o `src/components/admin/VenueEditor.jsx` (editor del admin)
+- **"Quiero vender entradas en la puerta el día del evento"** → pestaña "Venta en puerta" en el admin (`DoorSalesTab.jsx`) — primero hay que "Abrir caja"
+- **"El lector de QR no reconoce la cámara"** → revisá que el sitio esté en HTTPS (los navegadores bloquean la cámara en HTTP) y los permisos de cámara del navegador; como respaldo está el modo "Ingresar código a mano" en `QrScannerTab.jsx`
+- **"Quiero activar/desactivar los pagos simulados"** → `VITE_PAYMENT_MODE` en tu `.env` + el secret `PAYMENT_MODE` en Supabase (ver SETUP.md, Parte 2.5)
+- **"¿Cómo publico un cambio nuevo?"** → `./scripts/deploy.sh "mensaje"` (ver SETUP.md, Parte 7) — sube a GitHub, aplica migraciones en Supabase y redespliega las Edge Functions; Render se despliega solo
 - **"Quiero agregar un dato al formulario de compra"** → `src/pages/CheckoutPage.jsx` + `create_pending_reservation` en `0001_init.sql` (para guardarlo) + `create-payment-preference/index.ts` (si tiene que viajar a Mercado Pago)
 - **"Un botón del admin no hace lo que debería"** → buscá el componente en `src/components/admin/`
 - **"Quiero cambiar el footer (redes sociales, teléfono, email)"** → `src/site.config.js` (sección `footer`) — no hace falta tocar `Footer.jsx`

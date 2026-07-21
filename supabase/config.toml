@@ -11,3 +11,13 @@ verify_jwt = false
 
 [functions.release-expired-holds]
 verify_jwt = false
+
+[functions.mock-confirm-payment]
+verify_jwt = false
+
+# create-door-sale SÍ requiere JWT (a diferencia de las demás): quien
+# la llama tiene que ser un admin logueado, no un comprador anónimo con
+# la anon key. La función además valida el JWT "adentro" para poder
+# saber quién es el admin (queda registrado como sold_by).
+[functions.create-door-sale]
+verify_jwt = true

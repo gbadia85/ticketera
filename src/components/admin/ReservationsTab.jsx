@@ -12,6 +12,12 @@ const STATUS_LABELS = {
   expired: { label: 'Expirada', variant: 'secondary' },
 };
 
+const PAYMENT_METHOD_LABELS = {
+  mercadopago: 'Mercado Pago',
+  efectivo: 'Efectivo (puerta)',
+  simulado: 'Simulado',
+};
+
 const ReservationsTab = () => {
   const [reservations, setReservations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -32,13 +38,21 @@ const ReservationsTab = () => {
         <Card key={r.id}>
           <CardContent className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-3">
             <div className="space-y-1">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-medium">
                   {r.first_name} {r.last_name}
                 </span>
                 <Badge variant={STATUS_LABELS[r.status]?.variant}>{STATUS_LABELS[r.status]?.label}</Badge>
+                {r.payment_method && (
+                  <Badge variant="outline">{PAYMENT_METHOD_LABELS[r.payment_method] ?? r.payment_method}</Badge>
+                )}
+                {r.status === 'approved' && (
+                  <Badge variant={r.checked_in_at ? 'default' : 'secondary'}>
+                    {r.checked_in_at ? 'Ingresó' : 'No ingresó'}
+                  </Badge>
+                )}
               </div>
-              <p className="text-sm text-muted-foreground">{r.email}</p>
+              {r.email && <p className="text-sm text-muted-foreground">{r.email}</p>}
               <p className="text-sm text-muted-foreground">{r.events?.title}</p>
               <p className="text-xs text-muted-foreground">
                 {(r.reservation_seats ?? []).map((rs) => rs.event_seats?.seats?.label).filter(Boolean).join(', ')}

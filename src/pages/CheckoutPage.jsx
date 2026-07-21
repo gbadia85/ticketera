@@ -12,7 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
 import { useCountdown, formatMMSS } from '@/hooks/useCountdown';
 import { getEvent, listMyHeldSeats } from '@/lib/api';
-import { createPendingReservation, createPaymentPreference } from '@/lib/booking';
+import { createPendingReservation, createPaymentPreference, mockConfirmPayment, PAYMENT_MODE } from '@/lib/booking';
 import { getSessionId } from '@/lib/session';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
 import { siteConfig } from '@/site.config';
@@ -27,6 +27,7 @@ const CheckoutPage = () => {
   const [event, setEvent] = useState(null);
   const [heldSeats, setHeldSeats] = useState(null); // null = cargando
   const [isProcessing, setIsProcessing] = useState(false);
+  const [mockProcessing, setMockProcessing] = useState(false);
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -82,6 +83,17 @@ const CheckoutPage = () => {
     setIsProcessing(true);
     try {
       const { reservation_id } = await createPendingReservation(eventId, sessionId, formData);
+
+      if (PAYMENT_MODE === 'mock') {
+        setMockProcessing(true);
+        // Simulamos una demora real de pasarela de pago, para que las
+        // pruebas se sientan parecidas al flujo real.
+        await new Promise((resolve) => setTimeout(resolve, 2200));
+        await mockConfirmPayment(reservation_id);
+        navigate(`/pago/resultado?reservation_id=${reservation_id}`);
+        return;
+      }
+
       const { init_point, sandbox_init_point } = await createPaymentPreference(reservation_id);
       window.location.href = init_point || sandbox_init_point;
     } catch (err) {
@@ -96,6 +108,7 @@ const CheckoutPage = () => {
         toast({ title: 'No pudimos iniciar el pago', description: err.message, variant: 'destructive' });
       }
       setIsProcessing(false);
+      setMockProcessing(false);
     }
   };
 
@@ -109,6 +122,14 @@ const CheckoutPage = () => {
 
       <div className="min-h-screen flex flex-col">
         <Navbar />
+
+        {mockProcessing && (
+          <div className="fixed inset-0 z-50 bg-background/90 backdrop-blur-sm flex flex-col items-center justify-center gap-4 text-center px-6">
+            <div className="h-14 w-14 rounded-full border-4 border-gold/30 border-t-gold animate-spin" />
+            <h2 className="font-display text-2xl">{t.mockProcessingTitle}</h2>
+            <p className="text-muted-foreground text-sm max-w-xs">{t.mockProcessingSubtitle}</p>
+          </div>
+        )}
 
       <div className="container py-8 flex-1">
         <Button variant="ghost" onClick={() => navigate(`/evento/${eventId}`)} className="mb-6 -ml-3 text-muted-foreground">
@@ -150,10 +171,15 @@ const CheckoutPage = () => {
                 </CardHeader>
                 <CardContent>
                   <p className="text-sm text-muted-foreground mb-4">
-                    {t.paymentMethodDescription}
+                    {PAYMENT_MODE === 'mock' ? t.mockPaymentMethodDescription : t.paymentMethodDescription}
                   </p>
+                  {PAYMENT_MODE === 'mock' && (
+                    <p className="text-xs text-gold border border-gold/30 bg-gold/10 rounded-md px-3 py-2 mb-4">
+                      {t.mockModeNotice}
+                    </p>
+                  )}
                   <Button onClick={handlePayment} disabled={isProcessing} className="w-full" size="lg">
-                    {isProcessing ? t.payingButton : `${t.payButtonPrefix} ${formatCurrency(total)}`}
+                    {mockProcessing ? t.mockProcessingTitle : isProcessing ? t.payingButton : `${t.payButtonPrefix} ${formatCurrency(total)}`}
                   </Button>
                 </CardContent>
               </Card>

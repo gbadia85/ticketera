@@ -70,6 +70,59 @@ export async function getReservationStatus(reservationId) {
   return data;
 }
 
+// Modo de pago del sitio: 'mock' confirma la compra al instante (sin
+// Mercado Pago), pensado para probar el resto del flujo. Se activa con
+// VITE_PAYMENT_MODE=mock en el .env — ver checkout.mockNotice en
+// site.config.js para el aviso que ve el comprador.
+export const PAYMENT_MODE = import.meta.env.VITE_PAYMENT_MODE === 'mock' ? 'mock' : 'mercadopago';
+
+export async function mockConfirmPayment(reservationId) {
+  const res = await fetch(`${FUNCTIONS_URL}/mock-confirm-payment`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${ANON_KEY}`,
+      apikey: ANON_KEY,
+    },
+    body: JSON.stringify({ reservation_id: reservationId }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? 'mock_payment_error');
+  return data;
+}
+
+/**
+ * Venta en puerta: retiene, crea y confirma la reserva en un solo paso
+ * (pago en efectivo, contra una caja abierta). Requiere estar logueado
+ * como admin — usa el token de sesión actual, no la anon key.
+ */
+export async function createDoorSale({ eventId, seatIds, firstName, lastName, dni, phone, cashShiftId }) {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const accessToken = sessionData?.session?.access_token;
+  if (!accessToken) throw new Error('not_authenticated');
+
+  const res = await fetch(`${FUNCTIONS_URL}/create-door-sale`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+      apikey: ANON_KEY,
+    },
+    body: JSON.stringify({
+      event_id: eventId,
+      seat_ids: seatIds,
+      first_name: firstName,
+      last_name: lastName,
+      dni,
+      phone,
+      cash_shift_id: cashShiftId,
+    }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? 'door_sale_error');
+  return data; // { reservation_id, seat_labels, total, qr_base64, sold_by }
+}
+
 function mapRpcError(error) {
   const msg = error.message || '';
   if (msg.includes('seat_unavailable')) return 'seat_unavailable';

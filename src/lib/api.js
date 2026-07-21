@@ -352,3 +352,97 @@ export async function reorderVenueImage(imageA, imageB) {
     .eq('id', imageB.id);
   if (e2) throw e2;
 }
+
+// ---------------------------------------------------------------------
+// Caja (apertura/cierre por evento) y venta en puerta
+// ---------------------------------------------------------------------
+
+/** Caja actualmente abierta para un evento, o null si no hay ninguna. */
+export async function getOpenCashShift(eventId) {
+  const { data, error } = await supabase
+    .from('cash_shifts')
+    .select('*')
+    .eq('event_id', eventId)
+    .eq('status', 'open')
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function openCashShift(eventId, openingAmount, openedBy) {
+  const { data, error } = await supabase
+    .from('cash_shifts')
+    .insert({ event_id: eventId, opening_amount: openingAmount, opened_by: openedBy })
+    .select()
+    .single();
+  if (error) {
+    // Ya hay una caja abierta para este evento (índice único) — es una
+    // condición esperada si dos personas la abren casi al mismo tiempo,
+    // así que devolvemos la que ya está abierta en vez de fallar.
+    if (error.code === '23505') {
+      return getOpenCashShift(eventId);
+    }
+    throw error;
+  }
+  return data;
+}
+
+export async function closeCashShift(shiftId, countedAmount, closedBy, notes) {
+  const { data, error } = await supabase.rpc('close_cash_shift', {
+    p_shift_id: shiftId,
+    p_counted_amount: countedAmount,
+    p_closed_by: closedBy,
+    p_notes: notes ?? null,
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function listCashShiftHistory(eventId) {
+  const { data, error } = await supabase
+    .from('cash_shifts')
+    .select('*')
+    .eq('event_id', eventId)
+    .order('opened_at', { ascending: false });
+  if (error) throw error;
+  return data;
+}
+
+/** Ventas (reservas aprobadas) de una caja puntual — para el arqueo. */
+export async function listCashShiftSales(shiftId) {
+  const { data, error } = await supabase
+    .from('reservations')
+    .select('id, first_name, last_name, total_amount, created_at')
+    .eq('cash_shift_id', shiftId)
+    .eq('status', 'approved')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data;
+}
+
+/** Todas las reservas aprobadas de un evento, con su estado de ingreso. */
+export async function listEventReservations(eventId) {
+  const { data, error } = await supabase
+    .from('reservations')
+    .select(
+      'id, first_name, last_name, payment_method, total_amount, checked_in_at, checked_in_by, created_at, reservation_seats ( event_seats ( seats ( label ) ) )'
+    )
+    .eq('event_id', eventId)
+    .eq('status', 'approved')
+    .order('checked_in_at', { ascending: false, nullsFirst: false });
+  if (error) throw error;
+  return data.map((r) => ({
+    ...r,
+    seatLabels: (r.reservation_seats ?? []).map((rs) => rs.event_seats?.seats?.label).filter(Boolean),
+  }));
+}
+
+/** Marca el ingreso de una reserva a partir del contenido escaneado del QR. */
+export async function checkInReservation(reservationId, checkedInBy) {
+  const { data, error } = await supabase.rpc('check_in_reservation', {
+    p_reservation_id: reservationId,
+    p_checked_in_by: checkedInBy,
+  });
+  if (error) throw error;
+  return data; // { valid, reason?, first_name, last_name, seat_labels, already_checked_in, checked_in_at }
+}

@@ -6,6 +6,9 @@ import AdminLogin from '@/components/admin/AdminLogin';
 import VenuesTab from '@/components/admin/VenuesTab';
 import EventsTab from '@/components/admin/EventsTab';
 import ReservationsTab from '@/components/admin/ReservationsTab';
+import DoorSalesTab from '@/components/admin/DoorSalesTab';
+import QrScannerTab from '@/components/admin/QrScannerTab';
+import LiveEntryBoard from '@/components/admin/LiveEntryBoard';
 import DangerZoneTab from '@/components/admin/DangerZoneTab';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -35,10 +38,13 @@ const AdminDashboard = () => {
           </div>
 
           <Tabs defaultValue="venues">
-            <TabsList className="mb-6">
+            <TabsList className="mb-6 flex-wrap h-auto">
               <TabsTrigger value="venues">Salas</TabsTrigger>
               <TabsTrigger value="events">Eventos</TabsTrigger>
               <TabsTrigger value="reservations">Reservas</TabsTrigger>
+              <TabsTrigger value="door-sales">Venta en puerta</TabsTrigger>
+              <TabsTrigger value="qr-scanner">Lector QR</TabsTrigger>
+              <TabsTrigger value="live-board">Pantalla en vivo</TabsTrigger>
               <TabsTrigger value="danger" className="text-destructive">Peligro</TabsTrigger>
             </TabsList>
             <TabsContent value="venues">
@@ -49,6 +55,15 @@ const AdminDashboard = () => {
             </TabsContent>
             <TabsContent value="reservations">
               <ReservationsTab />
+            </TabsContent>
+            <TabsContent value="door-sales">
+              <DoorSalesTab />
+            </TabsContent>
+            <TabsContent value="qr-scanner">
+              <QrScannerTab />
+            </TabsContent>
+            <TabsContent value="live-board">
+              <LiveEntryBoard />
             </TabsContent>
             <TabsContent value="danger">
               <DangerZoneTab />

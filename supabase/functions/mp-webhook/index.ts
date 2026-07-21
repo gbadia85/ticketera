@@ -1,7 +1,7 @@
 // Edge Function: mp-webhook
 //
 // Recibe las notificaciones de pago de Mercado Pago. Esta es la ÚNICA
-// forma en la que una butaca pasa a estado 'sold' de forma definitiva:
+// forma en la que una butaca pasa a estado 'sold' por un pago online:
 // nunca se marca como vendida desde el frontend.
 //
 // Secrets necesarios:
@@ -14,6 +14,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders, getServiceRoleKey } from '../_shared/cors.ts';
+import { sendTicketConfirmationEmail } from '../_shared/email.ts';
 
 async function verifySignature(
   signatureHeader: string | null,
@@ -48,64 +49,6 @@ async function verifySignature(
     .join('');
 
   return computedHash === hash;
-}
-
-async function sendConfirmationEmail(params: {
-  resendApiKey: string;
-  emailFrom: string;
-  to: string;
-  firstName: string;
-  eventTitle: string;
-  venueName: string;
-  eventDate: string;
-  seatLabels: string[];
-  total: number;
-}) {
-  const { resendApiKey, emailFrom, to, firstName, eventTitle, venueName, eventDate, seatLabels, total } = params;
-
-  const formattedDate = new Date(eventDate).toLocaleString('es-AR', {
-    dateStyle: 'full',
-    timeStyle: 'short',
-  });
-  const formattedTotal = new Intl.NumberFormat('es-AR', {
-    style: 'currency',
-    currency: 'ARS',
-    maximumFractionDigits: 0,
-  }).format(total);
-
-  const html = `
-    <div style="font-family: Georgia, serif; max-width: 480px; margin: auto; padding: 24px; background:#14111A; color:#F5EFE3;">
-      <h1 style="color:#C9A227; font-size:22px;">¡Reserva confirmada!</h1>
-      <p>Hola ${firstName}, tu compra fue aprobada. Estos son los detalles:</p>
-      <table style="width:100%; margin: 16px 0; border-collapse: collapse;">
-        <tr><td style="padding:6px 0; color:#B4A9BE;">Evento</td><td style="text-align:right;">${eventTitle}</td></tr>
-        <tr><td style="padding:6px 0; color:#B4A9BE;">Sala</td><td style="text-align:right;">${venueName}</td></tr>
-        <tr><td style="padding:6px 0; color:#B4A9BE;">Fecha</td><td style="text-align:right;">${formattedDate}</td></tr>
-        <tr><td style="padding:6px 0; color:#B4A9BE;">Butacas</td><td style="text-align:right;">${seatLabels.join(', ')}</td></tr>
-        <tr><td style="padding:10px 0; font-weight:bold;">Total</td><td style="text-align:right; font-weight:bold; color:#C9A227;">${formattedTotal}</td></tr>
-      </table>
-      <p style="color:#B4A9BE; font-size:13px;">Presentá este mail o tu DNI en la boletería del teatro.</p>
-    </div>
-  `;
-
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${resendApiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from: emailFrom,
-      to: [to],
-      subject: `Confirmación de compra — ${eventTitle}`,
-      html,
-    }),
-  });
-
-  if (!res.ok) {
-    const detail = await res.text();
-    console.error('Error enviando email con Resend:', detail);
-  }
 }
 
 Deno.serve(async (req: Request) => {
@@ -186,19 +129,20 @@ Deno.serve(async (req: Request) => {
     }
 
     if (paymentStatus === 'approved') {
-      await supabase
-        .from('reservations')
-        .update({ status: 'approved', mp_payment_id: String(effectiveDataId), updated_at: new Date().toISOString() })
-        .eq('id', reservationId);
-
-      await supabase
-        .from('event_seats')
-        .update({ status: 'sold', held_by: null, held_until: null, updated_at: new Date().toISOString() })
-        .eq('reservation_id', reservationId);
+      const { error: markError } = await supabase.rpc('mark_reservation_paid', {
+        p_reservation_id: reservationId,
+        p_payment_method: 'mercadopago',
+        p_mp_payment_id: String(effectiveDataId),
+        p_cash_shift_id: null,
+      });
+      if (markError) {
+        console.error('Error marcando la reserva como pagada:', markError);
+        return new Response('ok', { status: 200, headers: corsHeaders });
+      }
 
       const resendApiKey = Deno.env.get('RESEND_API_KEY');
       const emailFrom = Deno.env.get('EMAIL_FROM');
-      if (resendApiKey && emailFrom) {
+      if (resendApiKey && emailFrom && reservation.email) {
         const { data: event } = await supabase
           .from('events')
           .select('title, event_date, venues ( name )')
@@ -212,7 +156,7 @@ Deno.serve(async (req: Request) => {
 
         const seatLabels = (seatRows ?? []).map((r: any) => r.event_seats?.seats?.label).filter(Boolean);
 
-        await sendConfirmationEmail({
+        await sendTicketConfirmationEmail({
           resendApiKey,
           emailFrom,
           to: reservation.email,
@@ -222,6 +166,7 @@ Deno.serve(async (req: Request) => {
           eventDate: event?.event_date ?? new Date().toISOString(),
           seatLabels,
           total: Number(reservation.total_amount),
+          reservationId,
         });
       }
     } else if (paymentStatus === 'rejected' || paymentStatus === 'cancelled') {
