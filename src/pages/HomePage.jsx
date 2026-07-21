@@ -108,7 +108,12 @@ const HomePage = () => {
                   className="will-change-transform"
                 >
                   <Link to={`/evento/${event.id}`}>
-                    <Card className="ticket-stub hover:border-gold/60 transition-colors h-full overflow-hidden">
+                    <Card className="ticket-stub hover:border-gold/60 transition-colors h-full overflow-hidden relative">
+                      {event.sold_out_status?.is_sold_out && (
+                        <span className="absolute top-3 right-3 z-10 bg-destructive text-destructive-foreground text-xs font-bold px-3 py-1 rounded-full rotate-3 shadow-lg">
+                          AGOTADO
+                        </span>
+                      )}
                       {cover ? (
                         <div className="aspect-video w-full overflow-hidden">
                           <img src={cover} alt={event.title} className="w-full h-full object-cover" />

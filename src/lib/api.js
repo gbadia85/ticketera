@@ -108,14 +108,30 @@ export async function deleteSeatsByVenue(venueId) {
 // ---------------------------------------------------------------------
 // Eventos
 // ---------------------------------------------------------------------
+async function attachSoldOutStatus(events) {
+  if (events.length === 0) return events;
+  const { data: statuses, error } = await supabase
+    .from('event_sold_out_status')
+    .select('*')
+    .in(
+      'event_id',
+      events.map((e) => e.id)
+    );
+  if (error) throw error;
+  const byId = new Map(statuses.map((s) => [s.event_id, s]));
+  return events.map((e) => ({ ...e, sold_out_status: byId.get(e.id) ?? null }));
+}
+
 export async function listPublicEvents() {
   const { data, error } = await supabase
     .from('events')
-    .select('*, venues ( id, name, address ), event_images ( id, url, path, sort_order )')
+    .select(
+      '*, venues ( id, name, address, capacity, general_admission ), event_images ( id, url, path, sort_order )'
+    )
     .eq('status', 'scheduled')
     .order('event_date');
   if (error) throw error;
-  return data.map((e) => ({ ...e, event_images: sortImages(e.event_images) }));
+  return attachSoldOutStatus(data.map((e) => ({ ...e, event_images: sortImages(e.event_images) })));
 }
 
 export async function listEventsByVenue(venueId) {
@@ -127,10 +143,12 @@ export async function listEventsByVenue(venueId) {
 export async function listAllEvents() {
   const { data, error } = await supabase
     .from('events')
-    .select('*, venues ( id, name, address ), event_images ( id, url, path, sort_order )')
+    .select(
+      '*, venues ( id, name, address, capacity, general_admission ), event_images ( id, url, path, sort_order )'
+    )
     .order('event_date', { ascending: false });
   if (error) throw error;
-  return data.map((e) => ({ ...e, event_images: sortImages(e.event_images) }));
+  return attachSoldOutStatus(data.map((e) => ({ ...e, event_images: sortImages(e.event_images) })));
 }
 
 export async function getEvent(eventId) {
@@ -140,10 +158,16 @@ export async function getEvent(eventId) {
     .eq('id', eventId)
     .single();
   if (error) throw error;
+  const { data: soldOutStatus } = await supabase
+    .from('event_sold_out_status')
+    .select('*')
+    .eq('event_id', eventId)
+    .maybeSingle();
   return {
     ...data,
     event_images: sortImages(data.event_images),
     venues: data.venues ? { ...data.venues, venue_images: sortImages(data.venues.venue_images) } : data.venues,
+    sold_out_status: soldOutStatus ?? null,
   };
 }
 
@@ -211,12 +235,15 @@ export async function listMyHeldSeats(eventId, sessionId) {
 // ---------------------------------------------------------------------
 // Reservas (panel de admin)
 // ---------------------------------------------------------------------
-export async function listReservations(eventId) {
+export async function listReservations({ eventId, venueId } = {}) {
   let query = supabase
     .from('reservations')
-    .select('*, events ( title ), reservation_seats ( price, event_seats ( seats ( label ) ) )')
+    .select(
+      '*, events!inner ( title, venue_id, event_date, venues ( id, name ) ), reservation_seats ( price, event_seats ( seats ( label ) ) )'
+    )
     .order('created_at', { ascending: false });
   if (eventId) query = query.eq('event_id', eventId);
+  if (venueId) query = query.eq('events.venue_id', venueId);
   const { data, error } = await query;
   if (error) throw error;
   return data;
@@ -425,7 +452,7 @@ export async function listEventReservations(eventId) {
   const { data, error } = await supabase
     .from('reservations')
     .select(
-      'id, first_name, last_name, payment_method, total_amount, checked_in_at, checked_in_by, created_at, reservation_seats ( event_seats ( seats ( label ) ) )'
+      'id, first_name, last_name, payment_method, total_amount, entry_status, checked_in_at, checked_in_by, created_at, reservation_seats ( event_seats ( seats ( label ) ) )'
     )
     .eq('event_id', eventId)
     .eq('status', 'approved')
@@ -444,5 +471,34 @@ export async function checkInReservation(reservationId, checkedInBy) {
     p_checked_in_by: checkedInBy,
   });
   if (error) throw error;
-  return data; // { valid, reason?, first_name, last_name, seat_labels, already_checked_in, checked_in_at }
+  return data; // { valid, reason?, already_inside, first_name, last_name, seat_labels, checked_in_at }
+}
+
+/** La persona sale (puede volver a escanear su QR más tarde para reingresar). */
+export async function markReservationExit(reservationId, by) {
+  const { data, error } = await supabase.rpc('mark_reservation_exit', {
+    p_reservation_id: reservationId,
+    p_by: by,
+  });
+  if (error) throw error;
+  return data;
+}
+
+/** El escaneo fue un error: deshace el ingreso, como si nunca hubiera entrado. */
+export async function cancelReservationCheckin(reservationId, by) {
+  const { data, error } = await supabase.rpc('cancel_reservation_checkin', {
+    p_reservation_id: reservationId,
+    p_by: by,
+  });
+  if (error) throw error;
+  return data;
+}
+
+/** Crea (o actualiza el precio de) las butacas virtuales de una sala de entrada general. */
+export async function ensureGeneralAdmissionSeats(venueId, price) {
+  const { error } = await supabase.rpc('ensure_general_admission_seats', {
+    p_venue_id: venueId,
+    p_price: price,
+  });
+  if (error) throw error;
 }

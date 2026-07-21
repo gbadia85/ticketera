@@ -152,6 +152,19 @@ funciones para marcar el check-in de cada entrada.
 Corré **`supabase/migrations/0006_door_sales_checkin_payments.sql`**
 completo en el SQL Editor.
 
+### 1.2.5 — Aplicar la migración 0007 (check-in con salida/cancelar, agotado, entrada general)
+
+Agrega:
+- Check-in con estados "adentro" / "salió" / cancelar (con historial completo).
+- Una sala no puede tener dos eventos en la misma fecha y hora.
+- Corte de venta 30 minutos después de empezada la función.
+- "Agotado" automático (no quedan lugares) o marcado a mano desde el admin.
+- Salas de entrada general (sin mapa de butacas), con venta por cantidad
+  hasta la capacidad de la sala.
+
+Corré **`supabase/migrations/0007_checkin_capacity_soldout.sql`**
+completo en el SQL Editor. Es seguro correrla aunque ya tengas datos cargados.
+
 ### 1.3 — (Opcional) Cargar datos de ejemplo
 
 Si querés una sala y un evento de prueba ya armados para no cargar todo
@@ -411,6 +424,7 @@ supabase migration repair --status applied 0003
 supabase migration repair --status applied 0004
 supabase migration repair --status applied 0005
 supabase migration repair --status applied 0006
+supabase migration repair --status applied 0007
 ```
 
 Verificá que quedó todo sincronizado:

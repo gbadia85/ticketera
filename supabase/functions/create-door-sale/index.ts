@@ -41,9 +41,12 @@ Deno.serve(async (req: Request) => {
     const soldBy = userData.user.email ?? userData.user.id;
 
     const body = await req.json();
-    const { event_id, seat_ids, first_name, last_name, dni, phone, cash_shift_id } = body;
+    const { event_id, seat_ids, quantity, first_name, last_name, dni, phone, cash_shift_id } = body;
 
-    if (!event_id || !Array.isArray(seat_ids) || seat_ids.length === 0 || !first_name || !last_name || !cash_shift_id) {
+    const hasSeatIds = Array.isArray(seat_ids) && seat_ids.length > 0;
+    const hasQuantity = Number.isInteger(quantity) && quantity > 0;
+
+    if (!event_id || (!hasSeatIds && !hasQuantity) || !first_name || !last_name || !cash_shift_id) {
       return jsonResponse({ error: 'missing_fields' }, 400);
     }
 
@@ -61,12 +64,21 @@ Deno.serve(async (req: Request) => {
 
     const sessionId = `door-${crypto.randomUUID()}`;
 
-    const { error: holdError } = await supabase.rpc('hold_seats', {
-      p_event_id: event_id,
-      p_seat_ids: seat_ids,
-      p_session_id: sessionId,
-      p_hold_minutes: 3,
-    });
+    const holdRpc = hasSeatIds
+      ? supabase.rpc('hold_seats', {
+          p_event_id: event_id,
+          p_seat_ids: seat_ids,
+          p_session_id: sessionId,
+          p_hold_minutes: 3,
+        })
+      : supabase.rpc('hold_next_available_seats', {
+          p_event_id: event_id,
+          p_quantity: quantity,
+          p_session_id: sessionId,
+          p_hold_minutes: 3,
+        });
+
+    const { error: holdError } = await holdRpc;
     if (holdError) {
       return jsonResponse({ error: mapRpcError(holdError.message) }, 409);
     }
@@ -120,5 +132,9 @@ Deno.serve(async (req: Request) => {
 function mapRpcError(msg: string): string {
   if (msg.includes('seat_unavailable')) return 'seat_unavailable';
   if (msg.includes('seat_not_found')) return 'seat_not_found';
+  if (msg.includes('sales_closed')) return 'sales_closed';
+  if (msg.includes('not_enough_seats')) return 'not_enough_seats';
+  if (msg.includes('invalid_quantity')) return 'invalid_quantity';
+  if (msg.includes('event_not_found')) return 'event_not_found';
   return msg || 'unknown_error';
 }

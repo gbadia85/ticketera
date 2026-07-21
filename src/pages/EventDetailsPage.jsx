@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Helmet } from 'react-helmet';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, CalendarDays, MapPin, Theater } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CalendarDays, MapPin, Minus, Plus, Theater, Users } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import SeatMap, { SeatMapLegend } from '@/components/SeatMap';
@@ -11,10 +11,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
 import { useEventSeats } from '@/hooks/useEventSeats';
 import { getEvent } from '@/lib/api';
-import { holdSeats } from '@/lib/booking';
+import { holdSeats, holdNextAvailableSeats } from '@/lib/booking';
 import { getSessionId } from '@/lib/session';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
 import { siteConfig } from '@/site.config';
+
+const SALES_CUTOFF_MINUTES = 30;
 
 const EventDetailsPage = () => {
   const { eventId } = useParams();
@@ -25,6 +27,7 @@ const EventDetailsPage = () => {
 
   const [event, setEvent] = useState(null);
   const [selectedIds, setSelectedIds] = useState(new Set());
+  const [quantity, setQuantity] = useState(1);
   const [holding, setHolding] = useState(false);
   const [activeImage, setActiveImage] = useState(0);
 
@@ -67,7 +70,10 @@ const EventDetailsPage = () => {
   }, [normalizedSeats]);
 
   const selectedSeats = normalizedSeats.filter((s) => selectedIds.has(s.seatId));
-  const total = selectedSeats.reduce((sum, s) => sum + Number(s.price), 0);
+  const isGeneralAdmission = !!event?.venues?.general_admission;
+  const availableCount = normalizedSeats.filter((s) => s.status === 'available').length;
+  const generalPrice = normalizedSeats[0]?.price ?? 0;
+  const total = isGeneralAdmission ? quantity * generalPrice : selectedSeats.reduce((sum, s) => sum + Number(s.price), 0);
 
   const handleToggle = (seat) => {
     setSelectedIds((prev) => {
@@ -81,23 +87,30 @@ const EventDetailsPage = () => {
     });
   };
 
+  const ERROR_MESSAGES = {
+    seat_unavailable: 'Una o más butacas seleccionadas ya no están disponibles. Elegí otras.',
+    sales_closed: 'La venta de entradas para esta función ya cerró.',
+    not_enough_seats: 'No quedan tantos lugares disponibles — probá con menos cantidad.',
+  };
+
   const handleReserve = async () => {
-    if (selectedSeats.length === 0) return;
+    const hasSelection = isGeneralAdmission ? quantity > 0 : selectedSeats.length > 0;
+    if (!hasSelection) return;
     setHolding(true);
     try {
-      await holdSeats(eventId, selectedSeats.map((s) => s.seatId), sessionId);
+      if (isGeneralAdmission) {
+        await holdNextAvailableSeats(eventId, quantity, sessionId);
+      } else {
+        await holdSeats(eventId, selectedSeats.map((s) => s.seatId), sessionId);
+      }
       navigate(`/checkout/${eventId}`);
     } catch (err) {
-      if (err.message === 'seat_unavailable') {
-        toast({
-          title: 'Alguien se te adelantó',
-          description: 'Una o más butacas seleccionadas ya no están disponibles. Elegí otras.',
-          variant: 'destructive',
-        });
-        setSelectedIds(new Set());
-      } else {
-        toast({ title: 'No pudimos reservar las butacas', description: err.message, variant: 'destructive' });
-      }
+      toast({
+        title: err.message === 'seat_unavailable' ? 'Alguien se te adelantó' : 'No pudimos reservar',
+        description: ERROR_MESSAGES[err.message] ?? err.message,
+        variant: 'destructive',
+      });
+      if (err.message === 'seat_unavailable') setSelectedIds(new Set());
     } finally {
       setHolding(false);
     }
@@ -106,9 +119,10 @@ const EventDetailsPage = () => {
   if (!event) return null;
 
   const eventImages = event.event_images ?? [];
-  const venueImages = event.venues?.venue_images ?? [];
-  const showGalleryRow = eventImages.length > 0 || venueImages.length > 0 || event.venues?.description;
   const mainImage = eventImages[activeImage]?.url ?? eventImages[0]?.url;
+  const isSoldOut = !!event.sold_out_status?.is_sold_out;
+  const salesClosed = new Date() > new Date(new Date(event.event_date).getTime() + SALES_CUTOFF_MINUTES * 60000);
+  const purchasingDisabled = isSoldOut || salesClosed;
 
   return (
     <>
@@ -124,61 +138,30 @@ const EventDetailsPage = () => {
           <ArrowLeft className="h-4 w-4 mr-2" /> Volver a la cartelera
         </Button>
 
-        {showGalleryRow && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-            {eventImages.length > 0 && (
-              <div className="space-y-2">
-                <div className="aspect-video rounded-lg overflow-hidden border border-border">
-                  <img src={mainImage} alt={event.title} className="w-full h-full object-cover" />
-                </div>
-                {eventImages.length > 1 && (
-                  <div className="flex gap-2 overflow-x-auto">
-                    {eventImages.map((img, i) => (
-                      <button
-                        key={img.id}
-                        onClick={() => setActiveImage(i)}
-                        className={`h-14 w-20 shrink-0 rounded-md overflow-hidden border-2 transition-colors ${
-                          i === activeImage ? 'border-gold' : 'border-transparent opacity-70 hover:opacity-100'
-                        }`}
-                      >
-                        <img src={img.url} alt="" className="w-full h-full object-cover" />
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {(venueImages.length > 0 || event.venues?.description) && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">{siteConfig.texts.eventDetails.salaSectionTitle}</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {venueImages.length > 0 ? (
-                    <div className="grid grid-cols-3 gap-2">
-                      {venueImages.slice(0, 3).map((img) => (
-                        <div key={img.id} className="aspect-square rounded-md overflow-hidden">
-                          <img src={img.url} alt={event.venues?.name} className="w-full h-full object-cover" />
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="aspect-video rounded-md flex items-center justify-center bg-gradient-to-br from-accent to-muted">
-                      <Theater className="h-8 w-8 text-gold" />
-                    </div>
-                  )}
-                  {event.venues?.description && (
-                    <p className="text-sm text-muted-foreground line-clamp-3">{event.venues.description}</p>
-                  )}
-                  <Link
-                    to={`/salas/${event.venues?.id}`}
-                    className="text-sm text-gold hover:underline inline-block"
+        {eventImages.length > 0 && (
+          <div className="mb-8 max-w-2xl">
+            <div className="aspect-video rounded-lg overflow-hidden border border-border relative">
+              <img src={mainImage} alt={event.title} className="w-full h-full object-cover" />
+              {isSoldOut && (
+                <span className="absolute top-3 right-3 bg-destructive text-destructive-foreground text-xs font-bold px-3 py-1 rounded-full rotate-3 shadow-lg">
+                  AGOTADO
+                </span>
+              )}
+            </div>
+            {eventImages.length > 1 && (
+              <div className="flex gap-2 overflow-x-auto mt-2">
+                {eventImages.map((img, i) => (
+                  <button
+                    key={img.id}
+                    onClick={() => setActiveImage(i)}
+                    className={`h-14 w-20 shrink-0 rounded-md overflow-hidden border-2 transition-colors ${
+                      i === activeImage ? 'border-gold' : 'border-transparent opacity-70 hover:opacity-100'
+                    }`}
                   >
-                    {siteConfig.texts.eventDetails.salaSeeMore} →
-                  </Link>
-                </CardContent>
-              </Card>
+                    <img src={img.url} alt="" className="w-full h-full object-cover" />
+                  </button>
+                ))}
+              </div>
             )}
           </div>
         )}
@@ -186,7 +169,14 @@ const EventDetailsPage = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2">
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
-              <h1 className="font-display text-3xl md:text-4xl mb-2">{event.title}</h1>
+              <div className="flex items-center gap-3 mb-2 flex-wrap">
+                <h1 className="font-display text-3xl md:text-4xl">{event.title}</h1>
+                {isSoldOut && (
+                  <span className="bg-destructive text-destructive-foreground text-xs font-bold px-3 py-1 rounded-full">
+                    AGOTADO
+                  </span>
+                )}
+              </div>
               <div className="flex flex-wrap gap-4 text-sm text-muted-foreground mb-6">
                 <span className="flex items-center gap-2">
                   <CalendarDays className="h-4 w-4" /> {formatDateTime(event.event_date)}
@@ -208,66 +198,128 @@ const EventDetailsPage = () => {
                 </div>
               )}
 
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">{t.chooseSeatsTitle}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {loading && <p className="text-muted-foreground text-sm">Cargando mapa de la sala…</p>}
-                  {error && <p className="text-destructive text-sm">No pudimos cargar el mapa de butacas.</p>}
-                  {!loading && !error && (
-                    <>
-                      <SeatMap seats={normalizedSeats} selectedIds={selectedIds} onToggle={handleToggle} />
-                      <div className="mt-6">
-                        <SeatMapLegend zones={zonesInEvent} />
-                      </div>
-                    </>
-                  )}
-                </CardContent>
-              </Card>
+              {purchasingDisabled && (
+                <div className="mb-6 rounded-lg border border-destructive/40 bg-destructive/10 p-4 flex items-center gap-3">
+                  <AlertTriangle className="h-5 w-5 text-destructive shrink-0" />
+                  <p className="text-sm">
+                    {isSoldOut ? 'Esta función está agotada.' : 'La venta de entradas para esta función ya cerró.'}
+                  </p>
+                </div>
+              )}
+
+              {isGeneralAdmission ? (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Users className="h-5 w-5" /> Entrada general
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {loading && <p className="text-muted-foreground text-sm">Cargando disponibilidad…</p>}
+                    {!loading && !purchasingDisabled && (
+                      <>
+                        <p className="text-sm text-muted-foreground">
+                          Esta sala no tiene butacas numeradas — elegí cuántas entradas querés. Quedan {availableCount}{' '}
+                          disponibles.
+                        </p>
+                        <div className="flex items-center gap-4">
+                          <button
+                            onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                            className="h-10 w-10 rounded-full border border-border flex items-center justify-center hover:border-gold/60"
+                          >
+                            <Minus className="h-4 w-4" />
+                          </button>
+                          <span className="text-2xl font-display w-10 text-center">{quantity}</span>
+                          <button
+                            onClick={() => setQuantity((q) => Math.min(availableCount || 1, q + 1))}
+                            className="h-10 w-10 rounded-full border border-border flex items-center justify-center hover:border-gold/60"
+                          >
+                            <Plus className="h-4 w-4" />
+                          </button>
+                          <span className="text-sm text-muted-foreground ml-2">
+                            {formatCurrency(generalPrice)} c/u
+                          </span>
+                        </div>
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">{t.chooseSeatsTitle}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {loading && <p className="text-muted-foreground text-sm">Cargando mapa de la sala…</p>}
+                    {error && <p className="text-destructive text-sm">No pudimos cargar el mapa de butacas.</p>}
+                    {!loading && !error && (
+                      <>
+                        <SeatMap
+                          seats={normalizedSeats}
+                          selectedIds={selectedIds}
+                          onToggle={purchasingDisabled ? () => {} : handleToggle}
+                          readOnly={purchasingDisabled}
+                        />
+                        <div className="mt-6">
+                          <SeatMapLegend zones={zonesInEvent} />
+                        </div>
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
             </motion.div>
           </div>
 
           <div className="lg:col-span-1 space-y-6">
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="sticky top-24 space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>{t.yourSelectionTitle}</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {selectedSeats.length === 0 && (
-                    <p className="text-sm text-muted-foreground">{t.emptySelection}</p>
-                  )}
-                  {selectedSeats.map((seat) => (
-                    <div key={seat.seatId} className="flex justify-between items-center text-sm">
-                      <span>
-                        {seat.label}
-                        {seat.zoneName && <span className="ml-2 text-xs text-gold">{seat.zoneName}</span>}
-                      </span>
-                      <span>{formatCurrency(seat.price)}</span>
-                    </div>
-                  ))}
-                  {selectedSeats.length > 0 && (
-                    <div className="border-t border-border pt-4 flex justify-between items-center font-semibold">
-                      <span>Total</span>
-                      <span className="text-gold">{formatCurrency(total)}</span>
-                    </div>
-                  )}
-                  <Button
-                    onClick={handleReserve}
-                    disabled={selectedSeats.length === 0 || holding}
-                    className="w-full"
-                    size="lg"
-                  >
-                    {holding ? t.reservingButton : t.reserveButton}
-                  </Button>
-                  <p className="text-xs text-muted-foreground text-center">
-                    {t.holdNotice}
-                  </p>
-                </CardContent>
-              </Card>
+              {!purchasingDisabled && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>{t.yourSelectionTitle}</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {isGeneralAdmission ? (
+                      <div className="flex justify-between items-center text-sm">
+                        <span>{quantity} entrada{quantity > 1 ? 's' : ''}</span>
+                        <span>{formatCurrency(total)}</span>
+                      </div>
+                    ) : (
+                      <>
+                        {selectedSeats.length === 0 && (
+                          <p className="text-sm text-muted-foreground">{t.emptySelection}</p>
+                        )}
+                        {selectedSeats.map((seat) => (
+                          <div key={seat.seatId} className="flex justify-between items-center text-sm">
+                            <span>
+                              {seat.label}
+                              {seat.zoneName && <span className="ml-2 text-xs text-gold">{seat.zoneName}</span>}
+                            </span>
+                            <span>{formatCurrency(seat.price)}</span>
+                          </div>
+                        ))}
+                      </>
+                    )}
+                    {(isGeneralAdmission ? quantity > 0 : selectedSeats.length > 0) && (
+                      <div className="border-t border-border pt-4 flex justify-between items-center font-semibold">
+                        <span>Total</span>
+                        <span className="text-gold">{formatCurrency(total)}</span>
+                      </div>
+                    )}
+                    <Button
+                      onClick={handleReserve}
+                      disabled={(isGeneralAdmission ? quantity < 1 : selectedSeats.length === 0) || holding}
+                      className="w-full"
+                      size="lg"
+                    >
+                      {holding ? t.reservingButton : t.reserveButton}
+                    </Button>
+                    <p className="text-xs text-muted-foreground text-center">{t.holdNotice}</p>
+                  </CardContent>
+                </Card>
+              )}
 
-              {zonesInEvent.length > 0 && (
+              {!isGeneralAdmission && zonesInEvent.length > 0 && (
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-base">{t.priceReferenceTitle}</CardTitle>
@@ -285,6 +337,32 @@ const EventDetailsPage = () => {
                   </CardContent>
                 </Card>
               )}
+
+              {/* Info de la sala — siempre visible, chica, al costado */}
+              <Card>
+                <CardContent className="p-4 flex gap-3 items-start">
+                  {event.venues?.venue_images?.[0]?.url ? (
+                    <img
+                      src={event.venues.venue_images[0].url}
+                      alt={event.venues?.name}
+                      className="h-14 w-14 rounded-md object-cover shrink-0"
+                    />
+                  ) : (
+                    <div className="h-14 w-14 rounded-md shrink-0 flex items-center justify-center bg-gradient-to-br from-accent to-muted">
+                      <Theater className="h-6 w-6 text-gold" />
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{event.venues?.name}</p>
+                    {event.venues?.address && (
+                      <p className="text-xs text-muted-foreground truncate">{event.venues.address}</p>
+                    )}
+                    <Link to={`/salas/${event.venues?.id}`} className="text-xs text-gold hover:underline">
+                      {t.salaSeeMore} →
+                    </Link>
+                  </div>
+                </CardContent>
+              </Card>
             </motion.div>
           </div>
         </div>

@@ -21,6 +21,23 @@ export async function holdSeats(eventId, seatIds, sessionId, holdMinutes = 10) {
   return data; // [{ event_seat_id, seat_id, held_until }]
 }
 
+/**
+ * Para salas de entrada general (sin mapa de butacas): retiene las
+ * próximas N "butacas" disponibles sin que el comprador elija cuáles.
+ */
+export async function holdNextAvailableSeats(eventId, quantity, sessionId, holdMinutes = 10) {
+  const { data, error } = await supabase.rpc('hold_next_available_seats', {
+    p_event_id: eventId,
+    p_quantity: quantity,
+    p_session_id: sessionId,
+    p_hold_minutes: holdMinutes,
+  });
+  if (error) {
+    throw new Error(mapRpcError(error));
+  }
+  return data;
+}
+
 export async function releaseSeats(eventId, sessionId) {
   const { error } = await supabase.rpc('release_seats', {
     p_event_id: eventId,
@@ -96,7 +113,7 @@ export async function mockConfirmPayment(reservationId) {
  * (pago en efectivo, contra una caja abierta). Requiere estar logueado
  * como admin — usa el token de sesión actual, no la anon key.
  */
-export async function createDoorSale({ eventId, seatIds, firstName, lastName, dni, phone, cashShiftId }) {
+export async function createDoorSale({ eventId, seatIds, quantity, firstName, lastName, dni, phone, cashShiftId }) {
   const { data: sessionData } = await supabase.auth.getSession();
   const accessToken = sessionData?.session?.access_token;
   if (!accessToken) throw new Error('not_authenticated');
@@ -111,6 +128,7 @@ export async function createDoorSale({ eventId, seatIds, firstName, lastName, dn
     body: JSON.stringify({
       event_id: eventId,
       seat_ids: seatIds,
+      quantity,
       first_name: firstName,
       last_name: lastName,
       dni,
@@ -129,5 +147,9 @@ function mapRpcError(error) {
   if (msg.includes('seat_not_found')) return 'seat_not_found';
   if (msg.includes('hold_expired')) return 'hold_expired';
   if (msg.includes('no_seats_requested')) return 'no_seats_requested';
+  if (msg.includes('sales_closed')) return 'sales_closed';
+  if (msg.includes('not_enough_seats')) return 'not_enough_seats';
+  if (msg.includes('invalid_quantity')) return 'invalid_quantity';
+  if (msg.includes('event_not_found')) return 'event_not_found';
   return msg || 'unknown_error';
 }

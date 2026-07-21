@@ -22,6 +22,7 @@ import {
   createEvent,
   deleteEvent,
   deleteEventImage,
+  ensureGeneralAdmissionSeats,
   getEventZonePrices,
   listAllEvents,
   listEventImages,
@@ -49,6 +50,13 @@ const STATUS_LABELS = {
   scheduled: { label: 'Publicado', variant: 'default' },
   cancelled: { label: 'Cancelado', variant: 'destructive' },
   completed: { label: 'Finalizado', variant: 'secondary' },
+};
+
+const friendlyEventError = (err) => {
+  if (err.message?.includes('venue_datetime_conflict')) {
+    return 'Esa sala ya tiene otro evento programado exactamente en esa misma fecha y hora.';
+  }
+  return err.message;
 };
 
 const EventsTab = () => {
@@ -89,7 +97,7 @@ const EventsTab = () => {
       reload();
       setPricingEventId(event.id);
     } catch (err) {
-      toast({ title: 'No pudimos crear el evento', description: err.message, variant: 'destructive' });
+      toast({ title: 'No pudimos crear el evento', description: friendlyEventError(err), variant: 'destructive' });
     }
   };
 
@@ -177,6 +185,7 @@ const EventsTab = () => {
                 <div className="flex items-center gap-2">
                   <h3 className="font-display text-lg">{event.title}</h3>
                   <Badge variant={STATUS_LABELS[event.status]?.variant}>{STATUS_LABELS[event.status]?.label}</Badge>
+                  {event.sold_out_status?.is_sold_out && <Badge variant="destructive">Agotado</Badge>}
                 </div>
                 <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
                   <span className="flex items-center gap-1.5">
@@ -312,24 +321,31 @@ const EventImagesDialog = ({ event, onClose }) => {
 
 const EventPricingDialog = ({ eventId, onClose }) => {
   const { toast } = useToast();
+  const [venue, setVenue] = useState(null);
   const [zones, setZones] = useState([]);
   const [prices, setPrices] = useState({});
+  const [generalPrice, setGeneralPrice] = useState('');
   const [loading, setLoading] = useState(true);
   const [publishing, setPublishing] = useState(false);
 
   useEffect(() => {
     (async () => {
-      const allEvents = await listAllEvents();
+      const [allEvents, allVenues] = await Promise.all([listAllEvents(), listVenues()]);
       const current = allEvents.find((e) => e.id === eventId);
       if (!current) return;
-      const [zonesData, overrides] = await Promise.all([listZones(current.venue_id), getEventZonePrices(eventId)]);
-      setZones(zonesData);
-      const priceMap = {};
-      zonesData.forEach((z) => {
-        const override = overrides.find((o) => o.zone_id === z.id);
-        priceMap[z.id] = override ? override.price : z.default_price;
-      });
-      setPrices(priceMap);
+      const currentVenue = allVenues.find((v) => v.id === current.venue_id);
+      setVenue(currentVenue);
+
+      if (!currentVenue?.general_admission) {
+        const [zonesData, overrides] = await Promise.all([listZones(current.venue_id), getEventZonePrices(eventId)]);
+        setZones(zonesData);
+        const priceMap = {};
+        zonesData.forEach((z) => {
+          const override = overrides.find((o) => o.zone_id === z.id);
+          priceMap[z.id] = override ? override.price : z.default_price;
+        });
+        setPrices(priceMap);
+      }
       setLoading(false);
     })();
   }, [eventId]);
@@ -337,10 +353,14 @@ const EventPricingDialog = ({ eventId, onClose }) => {
   const handlePublish = async () => {
     setPublishing(true);
     try {
-      await setEventZonePrices(
-        eventId,
-        Object.entries(prices).map(([zone_id, price]) => ({ zone_id, price: Number(price) }))
-      );
+      if (venue?.general_admission) {
+        await ensureGeneralAdmissionSeats(venue.id, Number(generalPrice) || 0);
+      } else {
+        await setEventZonePrices(
+          eventId,
+          Object.entries(prices).map(([zone_id, price]) => ({ zone_id, price: Number(price) }))
+        );
+      }
       await publishEvent(eventId);
       toast({ title: 'Evento publicado', description: 'Ya está visible en la cartelera.' });
       onClose();
@@ -351,17 +371,33 @@ const EventPricingDialog = ({ eventId, onClose }) => {
     }
   };
 
+  const canPublish = venue?.general_admission ? Number(generalPrice) >= 0 && generalPrice !== '' : zones.length > 0;
+
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Precios por zona</DialogTitle>
+          <DialogTitle>{venue?.general_admission ? 'Precio de entrada general' : 'Precios por zona'}</DialogTitle>
         </DialogHeader>
-        {loading && <p className="text-sm text-muted-foreground">Cargando zonas de la sala…</p>}
-        {!loading && zones.length === 0 && (
+        {loading && <p className="text-sm text-muted-foreground">Cargando datos de la sala…</p>}
+
+        {!loading && venue?.general_admission && (
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Esta sala es de entrada general (sin mapa de butacas). Se vende por cantidad, hasta la capacidad de la
+              sala ({venue.capacity ?? 0} lugares).
+            </p>
+            <div className="space-y-2">
+              <Label>Precio de la entrada</Label>
+              <Input type="number" min="0" value={generalPrice} onChange={(e) => setGeneralPrice(e.target.value)} />
+            </div>
+          </div>
+        )}
+
+        {!loading && venue && !venue.general_admission && zones.length === 0 && (
           <p className="text-sm text-destructive">Esta sala no tiene zonas ni butacas configuradas todavía.</p>
         )}
-        {!loading && zones.length > 0 && (
+        {!loading && venue && !venue.general_admission && zones.length > 0 && (
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
               Podés dejar el precio por defecto de cada zona o ajustarlo especialmente para esta función.
@@ -381,7 +417,7 @@ const EventPricingDialog = ({ eventId, onClose }) => {
           </div>
         )}
         <DialogFooter>
-          <Button onClick={handlePublish} disabled={loading || publishing || zones.length === 0}>
+          <Button onClick={handlePublish} disabled={loading || publishing || !canPublish}>
             {publishing ? 'Publicando…' : 'Publicar evento'}
           </Button>
         </DialogFooter>
@@ -397,6 +433,7 @@ const EditEventDialog = ({ event, venues, onClose, onSaved }) => {
     description: event.description ?? '',
     venue_id: event.venue_id,
     event_date: toDatetimeLocalValue(event.event_date),
+    manually_sold_out: event.manually_sold_out ?? false,
   });
   const [saving, setSaving] = useState(false);
 
@@ -410,13 +447,14 @@ const EditEventDialog = ({ event, venues, onClose, onSaved }) => {
         title: form.title,
         description: form.description || null,
         event_date: new Date(form.event_date).toISOString(),
+        manually_sold_out: form.manually_sold_out,
       };
       if (canChangeVenue) patch.venue_id = form.venue_id;
       await updateEvent(event.id, patch);
       toast({ title: 'Evento actualizado' });
       onSaved();
     } catch (err) {
-      toast({ title: 'No pudimos guardar los cambios', description: err.message, variant: 'destructive' });
+      toast({ title: 'No pudimos guardar los cambios', description: friendlyEventError(err), variant: 'destructive' });
     } finally {
       setSaving(false);
     }
@@ -467,7 +505,19 @@ const EditEventDialog = ({ event, venues, onClose, onSaved }) => {
               onChange={(e) => setForm({ ...form, event_date: e.target.value })}
               required
             />
+            <p className="text-xs text-muted-foreground">
+              La venta de entradas se corta automáticamente 30 minutos después de esta hora.
+            </p>
           </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={form.manually_sold_out}
+              onChange={(e) => setForm({ ...form, manually_sold_out: e.target.checked })}
+              className="h-4 w-4 rounded border-input"
+            />
+            Marcar como agotado manualmente
+          </label>
           <DialogFooter>
             <Button type="submit" disabled={saving}>
               {saving ? 'Guardando…' : 'Guardar cambios'}

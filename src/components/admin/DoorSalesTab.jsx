@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, DollarSign, Lock, Plus, Printer, Ticket, Unlock } from 'lucide-react';
+import { CheckCircle2, DollarSign, Lock, Minus, Plus, Printer, Ticket, Unlock, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -31,6 +31,7 @@ const DoorSalesTab = () => {
   const [sales, setSales] = useState([]);
 
   const [selectedIds, setSelectedIds] = useState(new Set());
+  const [quantity, setQuantity] = useState(1);
   const [buyer, setBuyer] = useState({ firstName: '', lastName: '', dni: '', phone: '' });
   const [submitting, setSubmitting] = useState(false);
   const [lastSale, setLastSale] = useState(null); // { seat_labels, total, qr_base64, ... }
@@ -61,6 +62,7 @@ const DoorSalesTab = () => {
   useEffect(() => {
     if (!eventId) return;
     setSelectedIds(new Set());
+    setQuantity(1);
     setLastSale(null);
     reloadShift(eventId);
   }, [eventId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -94,7 +96,13 @@ const DoorSalesTab = () => {
   }, [normalizedSeats]);
 
   const selectedSeats = normalizedSeats.filter((s) => selectedIds.has(s.seatId));
-  const total = selectedSeats.reduce((sum, s) => sum + Number(s.price), 0);
+  const selectedEvent = events.find((e) => e.id === eventId);
+  const isGeneralAdmission = !!selectedEvent?.venues?.general_admission;
+  const availableCount = normalizedSeats.filter((s) => s.status === 'available').length;
+  const generalPrice = normalizedSeats[0]?.price ?? 0;
+  const total = isGeneralAdmission
+    ? quantity * generalPrice
+    : selectedSeats.reduce((sum, s) => sum + Number(s.price), 0);
 
   const handleToggle = (seat) => {
     setSelectedIds((prev) => {
@@ -130,7 +138,8 @@ const DoorSalesTab = () => {
   };
 
   const handleRegisterSale = async () => {
-    if (!buyer.firstName || !buyer.lastName || selectedSeats.length === 0) {
+    const hasSelection = isGeneralAdmission ? quantity > 0 : selectedSeats.length > 0;
+    if (!buyer.firstName || !buyer.lastName || !hasSelection) {
       toast({ title: 'Faltan datos', description: 'Elegí butacas y completá nombre y apellido.', variant: 'destructive' });
       return;
     }
@@ -138,7 +147,8 @@ const DoorSalesTab = () => {
     try {
       const result = await createDoorSale({
         eventId,
-        seatIds: selectedSeats.map((s) => s.seatId),
+        seatIds: isGeneralAdmission ? undefined : selectedSeats.map((s) => s.seatId),
+        quantity: isGeneralAdmission ? quantity : undefined,
         firstName: buyer.firstName,
         lastName: buyer.lastName,
         dni: buyer.dni || null,
@@ -147,12 +157,15 @@ const DoorSalesTab = () => {
       });
       setLastSale(result);
       setSelectedIds(new Set());
+      setQuantity(1);
       setBuyer({ firstName: '', lastName: '', dni: '', phone: '' });
       setSales(await listCashShiftSales(shift.id));
     } catch (err) {
       const messages = {
         seat_unavailable: 'Una o más butacas elegidas ya no están disponibles.',
         shift_not_open: 'La caja se cerró — abrila de nuevo para seguir vendiendo.',
+        sales_closed: 'La venta de entradas para esta función ya cerró.',
+        not_enough_seats: 'No quedan tantos lugares disponibles.',
       };
       toast({
         title: 'No pudimos registrar la venta',
@@ -230,13 +243,39 @@ const DoorSalesTab = () => {
             <div className="lg:col-span-2">
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg">Elegí las butacas</CardTitle>
+                  <CardTitle className="text-lg">{isGeneralAdmission ? 'Cantidad de entradas' : 'Elegí las butacas'}</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <SeatMap seats={normalizedSeats} selectedIds={selectedIds} onToggle={handleToggle} />
-                  <div className="mt-6">
-                    <SeatMapLegend zones={zonesInEvent} />
-                  </div>
+                  {isGeneralAdmission ? (
+                    <div className="space-y-3">
+                      <p className="text-sm text-muted-foreground flex items-center gap-2">
+                        <Users className="h-4 w-4" /> Sala de entrada general — quedan {availableCount} lugares disponibles.
+                      </p>
+                      <div className="flex items-center gap-4">
+                        <button
+                          onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                          className="h-10 w-10 rounded-full border border-border flex items-center justify-center hover:border-gold/60"
+                        >
+                          <Minus className="h-4 w-4" />
+                        </button>
+                        <span className="text-2xl font-display w-10 text-center">{quantity}</span>
+                        <button
+                          onClick={() => setQuantity((q) => Math.min(availableCount || 1, q + 1))}
+                          className="h-10 w-10 rounded-full border border-border flex items-center justify-center hover:border-gold/60"
+                        >
+                          <Plus className="h-4 w-4" />
+                        </button>
+                        <span className="text-sm text-muted-foreground ml-2">{formatCurrency(generalPrice)} c/u</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <SeatMap seats={normalizedSeats} selectedIds={selectedIds} onToggle={handleToggle} />
+                      <div className="mt-6">
+                        <SeatMapLegend zones={zonesInEvent} />
+                      </div>
+                    </>
+                  )}
                 </CardContent>
               </Card>
             </div>
@@ -259,14 +298,23 @@ const DoorSalesTab = () => {
                   </div>
 
                   <div className="border-t border-border pt-3 space-y-1 text-sm">
-                    {selectedSeats.length === 0 && <p className="text-muted-foreground">Ninguna butaca seleccionada.</p>}
-                    {selectedSeats.map((s) => (
-                      <div key={s.seatId} className="flex justify-between">
-                        <span>{s.label}</span>
-                        <span>{formatCurrency(s.price)}</span>
+                    {isGeneralAdmission ? (
+                      <div className="flex justify-between">
+                        <span>{quantity} entrada{quantity > 1 ? 's' : ''}</span>
+                        <span>{formatCurrency(total)}</span>
                       </div>
-                    ))}
-                    {selectedSeats.length > 0 && (
+                    ) : (
+                      <>
+                        {selectedSeats.length === 0 && <p className="text-muted-foreground">Ninguna butaca seleccionada.</p>}
+                        {selectedSeats.map((s) => (
+                          <div key={s.seatId} className="flex justify-between">
+                            <span>{s.label}</span>
+                            <span>{formatCurrency(s.price)}</span>
+                          </div>
+                        ))}
+                      </>
+                    )}
+                    {(isGeneralAdmission ? quantity > 0 : selectedSeats.length > 0) && (
                       <div className="flex justify-between font-semibold pt-1">
                         <span>Total (efectivo)</span>
                         <span className="text-gold">{formatCurrency(total)}</span>

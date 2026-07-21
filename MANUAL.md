@@ -51,7 +51,7 @@ funcionalidad.
 | Archivo | Para qué sirve |
 |---|---|
 | `HomePage.jsx` | La cartelera pública (`/`): lista de eventos, con filtro por sala. Muestra la imagen de portada del evento si tiene alguna cargada. |
-| `EventDetailsPage.jsx` | Detalle de un evento (`/evento/:id`): galería de imágenes del evento, apartado "Sala" (imágenes + descripción de la sala), mapa de butacas interactivo, selección, precios de referencia, botón "Reservar". |
+| `EventDetailsPage.jsx` | Detalle de un evento (`/evento/:id`): galería de imágenes del evento, mapa de butacas interactivo (o selector de cantidad, si la sala es de entrada general), precios de referencia, sello de "Agotado" y aviso de venta cerrada, y una tarjeta chica de la sala siempre visible al costado. |
 | `CheckoutPage.jsx` | Checkout (`/checkout/:id`): cuenta regresiva del hold, formulario del comprador, botón de pago que redirige a Mercado Pago. |
 | `PaymentResultPage.jsx` | Pantalla de vuelta de Mercado Pago (`/pago/resultado`): consulta el estado de la reserva hasta confirmar. |
 | `VenuesPage.jsx` | Listado público de salas (`/salas`): tarjetas con imagen de portada, dirección y capacidad. |
@@ -72,12 +72,12 @@ funcionalidad.
 |---|---|
 | `AdminLogin.jsx` | Formulario de login (usa Supabase Auth). |
 | `VenuesTab.jsx` | Lista de salas: crear, eliminar, entrar al editor de cada una. |
-| `VenueEditor.jsx` | El editor de una sala: datos básicos, **descripción**, **imágenes de la sala**, zonas de precio (con paleta de colores acotada), y la grilla de butacas (generar, pintar por zona, marcar pasillos, **mover butacas** para armar formas en U/herradura). |
-| `EventsTab.jsx` | Lista de eventos: crear, **editar** (título/descripción/fecha, y sala si es borrador), **gestionar imágenes** (hasta 5, con portada y reorden), configurar precios por zona, publicar, cancelar, eliminar borradores. |
+| `VenueEditor.jsx` | El editor de una sala: datos básicos, **descripción**, **imágenes**, el toggle de **entrada general** (sin mapa de butacas), zonas de precio (con paleta de colores acotada), y la grilla de butacas (generar, pintar por zona, marcar pasillos, **mover butacas**). |
+| `EventsTab.jsx` | Lista de eventos: crear, **editar** (título/descripción/fecha — valida que no choque con otro evento de la misma sala —, y marcar **Agotado** a mano), **gestionar imágenes**, configurar precios (por zona, o un precio único si la sala es de entrada general) y publicar. |
 | `ImageManager.jsx` | Componente reutilizable de subida/borrado/reorden de imágenes, usado tanto por `EventsTab` como por `VenueEditor`. |
-| `ReservationsTab.jsx` | Lista de reservas (quién compró qué, para qué evento, medio de pago, estado del pago y si ya ingresó). |
-| `DoorSalesTab.jsx` | Venta en puerta: abrir/cerrar caja (con arqueo), elegir butacas en el mapa, cargar comprador y cobrar en efectivo — muestra el QR de cada entrada vendida. |
-| `QrScannerTab.jsx` | Lector de QR por cámara (con `jsqr`) para marcar el ingreso de cada entrada el día del evento; tiene un modo manual de respaldo si la cámara no anda. |
+| `ReservationsTab.jsx` | Planilla de reservas, filtrable por sala o por evento, con botón para imprimir — para control en la puerta. |
+| `DoorSalesTab.jsx` | Venta en puerta: abrir/cerrar caja (con arqueo), elegir butacas en el mapa (o cantidad, en salas de entrada general), cargar comprador y cobrar en efectivo — muestra el QR de cada entrada vendida. |
+| `QrScannerTab.jsx` | Lector de QR por cámara (con `jsqr`) para marcar el ingreso; si el mismo QR se vuelve a leer, alerta y deja "Marcar salida" (para reingresar después) o "Cancelar ingreso" (si fue un error) — sin apuro: solo sigue escaneando cuando la persona toca "Siguiente". |
 | `LiveEntryBoard.jsx` | Pantalla en vivo para el día del evento: mapa de butacas vendidas + lista de ingresos en tiempo real, para la persona de boletería. |
 | `DangerZoneTab.jsx` | Pestaña "Peligro": borrar todos los eventos / todas las salas / resetear la base completa, con confirmación escrita. |
 
@@ -128,6 +128,7 @@ probablemente el problema esté en uno de estos archivos.
 | `0004_swap_seat_positions.sql` | Agrega la función que permite "mover" butacas de lugar en el editor de sala. |
 | `0005_images_and_venue_description.sql` | Agrega imágenes de evento y de sala (tablas `event_images`/`venue_images` + buckets de Storage), y la descripción de sala. |
 | `0006_door_sales_checkin_payments.sql` | Agrega la caja (`cash_shifts`, apertura/cierre con arqueo), el método de pago de cada reserva (Mercado Pago / efectivo / simulado), y el check-in por QR (`checked_in_at`, `check_in_reservation`). |
+| `0007_checkin_capacity_soldout.sql` | Check-in con estados adentro/salió/cancelar (con historial); una sala no puede tener dos eventos en la misma fecha y hora; corte de venta 30 min después de empezada la función; "Agotado" automático o manual; salas de entrada general (sin mapa de butacas). |
 
 ### `supabase/functions/` — Edge Functions (código de servidor)
 

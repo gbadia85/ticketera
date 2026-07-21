@@ -86,6 +86,7 @@ const VenueEditor = ({ venueId }) => {
         address: venue.address,
         capacity: venue.capacity ? Number(venue.capacity) : null,
         description: venue.description || null,
+        general_admission: venue.general_admission ?? false,
       });
       toast({ title: 'Datos de la sala guardados' });
     } catch (err) {
@@ -292,6 +293,21 @@ const VenueEditor = ({ venueId }) => {
                 rows={3}
               />
             </div>
+            <label className="md:col-span-3 flex items-start gap-2 text-sm rounded-md border border-border p-3">
+              <input
+                type="checkbox"
+                checked={venue.general_admission ?? false}
+                onChange={(e) => setVenue({ ...venue, general_admission: e.target.checked })}
+                className="h-4 w-4 rounded border-input mt-0.5"
+              />
+              <span>
+                <span className="block font-medium">Sala de entrada general (sin mapa de butacas)</span>
+                <span className="block text-xs text-muted-foreground">
+                  Se vende por cantidad de entradas en vez de elegir butacas puntuales. El límite de "agotado" es la
+                  capacidad de arriba. Al activarlo, las zonas y el layout de butacas de abajo dejan de usarse.
+                </span>
+              </span>
+            </label>
             <div className="md:col-span-3">
               <Button type="submit" size="sm">
                 <Save className="h-4 w-4 mr-2" /> Guardar
@@ -322,6 +338,14 @@ const VenueEditor = ({ venueId }) => {
         </CardContent>
       </Card>
 
+      {venue.general_admission ? (
+        <Card>
+          <CardContent className="p-5 text-sm text-muted-foreground">
+            Esta sala está configurada como <strong className="text-foreground">entrada general</strong>: no usa
+            zonas de precio ni mapa de butacas. El precio de la entrada se define al publicar cada evento.
+          </CardContent>
+        </Card>
+      ) : (
       <Card>
         <CardHeader>
           <CardTitle className="text-lg flex items-center gap-2">
@@ -513,6 +537,7 @@ const VenueEditor = ({ venueId }) => {
           )}
         </CardContent>
       </Card>
+      )}
     </div>
   );
 };

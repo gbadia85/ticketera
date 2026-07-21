@@ -46,7 +46,8 @@ const LiveEntryBoard = () => {
   }, [normalizedSeats]);
 
   const soldCount = normalizedSeats.filter((s) => s.status === 'sold').length;
-  const checkedInCount = reservations.filter((r) => r.checked_in_at).length;
+  const insideCount = reservations.filter((r) => r.entry_status === 'inside').length;
+  const everEnteredCount = reservations.filter((r) => r.entry_status === 'inside' || r.entry_status === 'outside').length;
   const ticketsCount = reservations.reduce((sum, r) => sum + (r.seatLabels?.length || 0), 0);
 
   const recentCheckins = reservations
@@ -90,9 +91,9 @@ const LiveEntryBoard = () => {
                 <LogIn className="h-8 w-8 text-success" />
                 <div>
                   <p className="text-2xl font-display">
-                    {checkedInCount} <span className="text-sm text-muted-foreground font-sans">/ {reservations.length}</span>
+                    {insideCount} <span className="text-sm text-muted-foreground font-sans">/ {reservations.length}</span>
                   </p>
-                  <p className="text-xs text-muted-foreground">entradas ingresadas</p>
+                  <p className="text-xs text-muted-foreground">adentro ahora ({everEnteredCount} entraron en total)</p>
                 </div>
               </CardContent>
             </Card>
@@ -139,9 +140,14 @@ const LiveEntryBoard = () => {
                         <p className="font-medium">{r.first_name} {r.last_name}</p>
                         <p className="text-xs text-muted-foreground">{r.seatLabels?.join(', ')}</p>
                       </div>
-                      <span className="text-xs text-muted-foreground whitespace-nowrap">
-                        {new Date(r.checked_in_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
-                      </span>
+                      <div className="text-right">
+                        <span className={`text-xs ${r.entry_status === 'inside' ? 'text-success' : 'text-muted-foreground'}`}>
+                          {r.entry_status === 'inside' ? 'Adentro' : 'Salió'}
+                        </span>
+                        <p className="text-xs text-muted-foreground whitespace-nowrap">
+                          {new Date(r.checked_in_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
                     </div>
                   ))}
                 </CardContent>
