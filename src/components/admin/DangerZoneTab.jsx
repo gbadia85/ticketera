@@ -15,32 +15,69 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
-import { adminDeleteAllEvents, adminDeleteAllVenues, adminResetDatabase } from '@/lib/api';
+import {
+  adminDeleteAllEvents,
+  adminDeleteAllVenues,
+  adminResetDatabase,
+  deleteExpiredReservations,
+  purgeAllUploadedImages,
+  purgeEventImagesStorage,
+  purgeVenueImagesStorage,
+} from '@/lib/api';
 
 const ACTIONS = [
+  {
+    key: 'expired',
+    title: 'Eliminar reservas expiradas',
+    description:
+      'Borra las reservas que nunca se llegaron a pagar (el hold de 10 minutos venció). No son ventas reales — no afecta reservas aprobadas, pendientes o rechazadas.',
+    confirmWord: 'BORRAR EXPIRADAS',
+    action: deleteExpiredReservations,
+    resultMessage: (count) => `Se borraron ${count} reserva${count === 1 ? '' : 's'} expirada${count === 1 ? '' : 's'}.`,
+  },
   {
     key: 'events',
     title: 'Borrar todos los eventos',
     description:
-      'Borra todos los eventos, sus butacas por evento, precios por evento y TODAS las reservas (aprobadas o no). Las salas, zonas y el layout de butacas quedan intactos.',
+      'Borra todos los eventos, sus butacas por evento, precios por evento, TODAS las reservas, y las imágenes de esos eventos (también los archivos subidos, no solo el registro). Las salas, zonas y el layout de butacas quedan intactos.',
     confirmWord: 'BORRAR EVENTOS',
-    action: adminDeleteAllEvents,
+    action: async () => {
+      await adminDeleteAllEvents();
+      await purgeEventImagesStorage();
+    },
   },
   {
     key: 'venues',
     title: 'Borrar todas las salas',
     description:
-      'Borra todas las salas, sus zonas de precio y butacas. Como un evento no puede existir sin sala, esto borra también todos los eventos y reservas. No quedará nada cargado.',
+      'Borra todas las salas, sus zonas de precio y butacas. Como un evento no puede existir sin sala, esto borra también todos los eventos, reservas, y todas las imágenes subidas (eventos y salas). No quedará nada cargado.',
     confirmWord: 'BORRAR SALAS',
-    action: adminDeleteAllVenues,
+    action: async () => {
+      await adminDeleteAllVenues();
+      await purgeEventImagesStorage();
+      await purgeVenueImagesStorage();
+    },
+  },
+  {
+    key: 'images',
+    title: 'Vaciar imágenes subidas',
+    description:
+      'Borra todas las imágenes de eventos y salas que se subieron a Storage, sin tocar el resto de los datos (eventos, salas y reservas siguen ahí, solo pierden sus fotos).',
+    confirmWord: 'BORRAR IMAGENES',
+    action: purgeAllUploadedImages,
+    resultMessage: (count) => `Se borraron ${count} archivo${count === 1 ? '' : 's'} de Storage.`,
   },
   {
     key: 'reset',
     title: 'Resetear toda la base de datos',
     description:
-      'Vuelve el sistema al estado inicial: borra salas, zonas, butacas, eventos y reservas por completo. Usalo solo si querés arrancar de cero.',
+      'Vuelve el sistema al estado inicial: borra salas, zonas, butacas, eventos, reservas e imágenes (registro y archivos) por completo. Usalo solo si querés arrancar de cero.',
     confirmWord: 'RESETEAR TODO',
-    action: adminResetDatabase,
+    action: async () => {
+      await adminResetDatabase();
+      await purgeEventImagesStorage();
+      await purgeVenueImagesStorage();
+    },
   },
 ];
 
@@ -56,8 +93,9 @@ const DangerZoneTab = () => {
     if (!current || confirmText !== current.confirmWord) return;
     setLoadingKey(current.key);
     try {
-      await current.action();
-      toast({ title: 'Listo', description: `${current.title}: hecho.` });
+      const result = await current.action();
+      const description = current.resultMessage ? current.resultMessage(result) : `${current.title}: hecho.`;
+      toast({ title: 'Listo', description });
       setOpenKey(null);
       setConfirmText('');
     } catch (err) {

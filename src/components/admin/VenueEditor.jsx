@@ -23,6 +23,7 @@ import {
   listZones,
   reorderVenueImage,
   swapSeatPositions,
+  syncGeneralAdmissionCapacity,
   updateSeat,
   updateVenue,
   updateZone,
@@ -88,6 +89,9 @@ const VenueEditor = ({ venueId }) => {
         description: venue.description || null,
         general_admission: venue.general_admission ?? false,
       });
+      if (venue.general_admission) {
+        await syncGeneralAdmissionCapacity(venueId);
+      }
       toast({ title: 'Datos de la sala guardados' });
     } catch (err) {
       toast({ title: 'Error al guardar', description: err.message, variant: 'destructive' });

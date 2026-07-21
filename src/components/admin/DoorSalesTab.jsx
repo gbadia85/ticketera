@@ -33,6 +33,7 @@ const DoorSalesTab = () => {
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [quantity, setQuantity] = useState(1);
   const [buyer, setBuyer] = useState({ firstName: '', lastName: '', dni: '', phone: '' });
+  const [paymentMethod, setPaymentMethod] = useState('efectivo');
   const [submitting, setSubmitting] = useState(false);
   const [lastSale, setLastSale] = useState(null); // { seat_labels, total, qr_base64, ... }
 
@@ -123,7 +124,8 @@ const DoorSalesTab = () => {
     }
   };
 
-  const salesTotal = sales.reduce((sum, s) => sum + Number(s.total_amount), 0);
+  const cashSales = sales.filter((s) => s.payment_method === 'efectivo');
+  const salesTotal = cashSales.reduce((sum, s) => sum + Number(s.total_amount), 0);
   const expectedInDrawer = Number(shift?.opening_amount ?? 0) + salesTotal;
 
   const handleCloseShift = async () => {
@@ -154,11 +156,13 @@ const DoorSalesTab = () => {
         dni: buyer.dni || null,
         phone: buyer.phone || null,
         cashShiftId: shift.id,
+        paymentMethod,
       });
       setLastSale(result);
       setSelectedIds(new Set());
       setQuantity(1);
       setBuyer({ firstName: '', lastName: '', dni: '', phone: '' });
+      setPaymentMethod('efectivo');
       setSales(await listCashShiftSales(shift.id));
     } catch (err) {
       const messages = {
@@ -225,13 +229,18 @@ const DoorSalesTab = () => {
         <>
           <Card>
             <CardContent className="p-4 flex flex-wrap items-center justify-between gap-4">
-              <div className="flex items-center gap-2 text-sm">
+              <div className="flex items-center gap-2 text-sm flex-wrap">
                 <DollarSign className="h-4 w-4 text-gold" />
                 <span className="text-muted-foreground">Caja abierta por {shift.opened_by} —</span>
                 <span className="font-semibold">{formatCurrency(expectedInDrawer)}</span>
                 <span className="text-muted-foreground">
-                  en cajón ({formatCurrency(shift.opening_amount)} inicial + {sales.length} venta{sales.length === 1 ? '' : 's'})
+                  en cajón ({formatCurrency(shift.opening_amount)} inicial + {cashSales.length} venta{cashSales.length === 1 ? '' : 's'} en efectivo)
                 </span>
+                {sales.length > cashSales.length && (
+                  <span className="text-xs text-muted-foreground">
+                    · {sales.length - cashSales.length} venta{sales.length - cashSales.length === 1 ? '' : 's'} más por transferencia/otro medio (no cuentan para el cajón)
+                  </span>
+                )}
               </div>
               <Button variant="outline" size="sm" onClick={() => setCloseDialogOpen(true)}>
                 <Lock className="h-4 w-4 mr-2" /> Cerrar caja
@@ -297,6 +306,35 @@ const DoorSalesTab = () => {
                     <Input placeholder="Teléfono (opcional)" value={buyer.phone} onChange={(e) => setBuyer({ ...buyer, phone: e.target.value })} />
                   </div>
 
+                  <div className="space-y-1.5">
+                    <span className="text-xs text-muted-foreground">Método de pago</span>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { value: 'efectivo', label: 'Contado' },
+                        { value: 'transferencia', label: 'Transferencia' },
+                        { value: 'simulado', label: 'Otro (simulado)' },
+                      ].map((opt) => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setPaymentMethod(opt.value)}
+                          className={`text-xs rounded-md border px-2 py-2 transition-colors ${
+                            paymentMethod === opt.value
+                              ? 'border-gold bg-gold/10 text-gold'
+                              : 'border-border text-muted-foreground hover:border-gold/40'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                    {paymentMethod === 'simulado' && (
+                      <p className="text-xs text-muted-foreground">
+                        Por ahora queda registrada como simulada — cuando sumemos ese medio de pago real, se va a poder distinguir.
+                      </p>
+                    )}
+                  </div>
+
                   <div className="border-t border-border pt-3 space-y-1 text-sm">
                     {isGeneralAdmission ? (
                       <div className="flex justify-between">
@@ -336,7 +374,12 @@ const DoorSalesTab = () => {
                   <CardContent className="space-y-2 max-h-56 overflow-y-auto">
                     {sales.map((s) => (
                       <div key={s.id} className="flex justify-between text-sm">
-                        <span>{s.first_name} {s.last_name}</span>
+                        <span>
+                          {s.first_name} {s.last_name}
+                          <span className="ml-2 text-xs text-muted-foreground">
+                            {{ efectivo: 'Contado', transferencia: 'Transferencia', simulado: 'Otro' }[s.payment_method] ?? s.payment_method}
+                          </span>
+                        </span>
                         <span>{formatCurrency(s.total_amount)}</span>
                       </div>
                     ))}

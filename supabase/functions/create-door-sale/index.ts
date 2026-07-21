@@ -41,10 +41,12 @@ Deno.serve(async (req: Request) => {
     const soldBy = userData.user.email ?? userData.user.id;
 
     const body = await req.json();
-    const { event_id, seat_ids, quantity, first_name, last_name, dni, phone, cash_shift_id } = body;
+    const { event_id, seat_ids, quantity, first_name, last_name, dni, phone, cash_shift_id, payment_method } = body;
 
     const hasSeatIds = Array.isArray(seat_ids) && seat_ids.length > 0;
     const hasQuantity = Number.isInteger(quantity) && quantity > 0;
+    const validPaymentMethods = ['efectivo', 'transferencia', 'simulado'];
+    const resolvedPaymentMethod = validPaymentMethods.includes(payment_method) ? payment_method : 'efectivo';
 
     if (!event_id || (!hasSeatIds && !hasQuantity) || !first_name || !last_name || !cash_shift_id) {
       return jsonResponse({ error: 'missing_fields' }, 400);
@@ -100,7 +102,7 @@ Deno.serve(async (req: Request) => {
 
     const { error: markError } = await supabase.rpc('mark_reservation_paid', {
       p_reservation_id: reservationId,
-      p_payment_method: 'efectivo',
+      p_payment_method: resolvedPaymentMethod,
       p_mp_payment_id: null,
       p_cash_shift_id: cash_shift_id,
     });

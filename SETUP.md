@@ -165,6 +165,25 @@ Agrega:
 Corré **`supabase/migrations/0007_checkin_capacity_soldout.sql`**
 completo en el SQL Editor. Es seguro correrla aunque ya tengas datos cargados.
 
+### 1.2.6 — Aplicar la migración 0008 (fix de reservas + pagos en puerta + personalización)
+
+Esta corrige un bug importante: si probaste reservar butacas y te
+apareció el error **"column reference seat_id is ambiguous"**, es por
+esto — corré esta migración para arreglarlo.
+
+Además agrega:
+- Diferenciar en la venta en puerta: contado / transferencia / otro medio.
+- Borrar reservas expiradas desde la Zona de Peligro (y que las demás
+  acciones de esa pestaña también vacíen las imágenes de Storage, no
+  solo las filas de la base).
+- Que subir la capacidad de una sala de entrada general destrabe el
+  "Agotado" automáticamente.
+- La tabla `site_settings` para personalizar nombre, logo y colores
+  desde el admin (pestaña "Personalizar sitio").
+
+Corré **`supabase/migrations/0008_fixes_payments_settings.sql`**
+completo en el SQL Editor.
+
 ### 1.3 — (Opcional) Cargar datos de ejemplo
 
 Si querés una sala y un evento de prueba ya armados para no cargar todo
@@ -425,6 +444,7 @@ supabase migration repair --status applied 0004
 supabase migration repair --status applied 0005
 supabase migration repair --status applied 0006
 supabase migration repair --status applied 0007
+supabase migration repair --status applied 0008
 ```
 
 Verificá que quedó todo sincronizado:

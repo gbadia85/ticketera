@@ -1,6 +1,7 @@
 import React from 'react';
 import { Facebook, Globe, Instagram, Linkedin, Mail, MapPin, MessageCircle, Phone, Youtube } from 'lucide-react';
 import { siteConfig } from '@/site.config';
+import { useSiteSettings } from '@/contexts/SiteSettingsContext';
 
 // Mapeo de plataforma -> ícono. "x" y "tiktok" y "threads" no tienen un
 // ícono de marca dedicado en esta versión de lucide-react, así que usan
@@ -19,6 +20,8 @@ const SOCIAL_ICONS = {
 const whatsappUrl = (phone) => `https://wa.me/${phone.replace(/[^\d]/g, '')}`;
 
 const Footer = () => {
+  const { settings } = useSiteSettings();
+  const siteName = settings?.site_name || siteConfig.identity.siteName;
   const { text, copyright, contact, social } = siteConfig.footer;
   const activeSocial = (social ?? []).filter((s) => s.url || s.platform === 'whatsapp');
   const hasContact = contact?.phone || contact?.email || contact?.address;
@@ -27,7 +30,7 @@ const Footer = () => {
     <footer className="border-t border-border/60 bg-background/70 backdrop-blur-md mt-16">
       <div className="container py-10 flex flex-col md:flex-row md:items-start md:justify-between gap-8">
         <div className="max-w-sm">
-          <span className="font-display text-lg">{siteConfig.identity.siteName}</span>
+          <span className="font-display text-lg">{siteName}</span>
           {text && <p className="text-sm text-muted-foreground mt-2">{text}</p>}
         </div>
 

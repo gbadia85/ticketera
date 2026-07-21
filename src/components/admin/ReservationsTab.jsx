@@ -16,6 +16,7 @@ const STATUS_LABELS = {
 const PAYMENT_METHOD_LABELS = {
   mercadopago: 'Mercado Pago',
   efectivo: 'Efectivo (puerta)',
+  transferencia: 'Transferencia (puerta)',
   simulado: 'Simulado',
 };
 
@@ -30,6 +31,7 @@ const ReservationsTab = () => {
   const [events, setEvents] = useState([]);
   const [venueId, setVenueId] = useState('');
   const [eventId, setEventId] = useState('');
+  const [statusFilter, setStatusFilter] = useState('active'); // 'active' = todas menos expiradas
   const [reservations, setReservations] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -59,9 +61,17 @@ const ReservationsTab = () => {
     [events, venueId]
   );
 
-  const totalAmount = reservations
+  const visibleReservations = useMemo(() => {
+    if (statusFilter === 'active') return reservations.filter((r) => r.status !== 'expired');
+    if (statusFilter === 'all') return reservations;
+    return reservations.filter((r) => r.status === statusFilter);
+  }, [reservations, statusFilter]);
+
+  const totalAmount = visibleReservations
     .filter((r) => r.status === 'approved')
     .reduce((sum, r) => sum + Number(r.total_amount), 0);
+
+  const expiredCount = reservations.filter((r) => r.status === 'expired').length;
 
   const filterLabel = eventId
     ? events.find((e) => e.id === eventId)?.title
@@ -105,6 +115,22 @@ const ReservationsTab = () => {
             ))}
           </select>
         </div>
+        <div className="w-52">
+          <Label>Estado</Label>
+          <select
+            className="w-full mt-1.5 rounded-md border border-input bg-background px-3 py-2 text-sm"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="active">Todas (sin expiradas)</option>
+            <option value="all">Todas (incluye expiradas)</option>
+            <option value="approved">Solo aprobadas</option>
+            <option value="pending">Solo pendientes</option>
+            <option value="expired">Solo expiradas{expiredCount > 0 ? ` (${expiredCount})` : ''}</option>
+            <option value="rejected">Solo rechazadas</option>
+            <option value="cancelled">Solo canceladas</option>
+          </select>
+        </div>
         <button
           onClick={() => window.print()}
           className="ml-auto flex items-center gap-2 rounded-md border border-input px-4 py-2 text-sm hover:bg-accent"
@@ -119,11 +145,11 @@ const ReservationsTab = () => {
       </div>
 
       {loading && <p className="text-muted-foreground text-sm">Cargando reservas…</p>}
-      {!loading && reservations.length === 0 && (
+      {!loading && visibleReservations.length === 0 && (
         <p className="text-muted-foreground text-sm">No hay reservas para este filtro.</p>
       )}
 
-      {!loading && reservations.length > 0 && (
+      {!loading && visibleReservations.length > 0 && (
         <div className="overflow-x-auto rounded-lg border border-border">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left">
@@ -140,7 +166,7 @@ const ReservationsTab = () => {
               </tr>
             </thead>
             <tbody>
-              {reservations.map((r) => (
+              {visibleReservations.map((r) => (
                 <tr key={r.id} className="border-t border-border/60">
                   <td className="p-3">
                     <div className="font-medium">{r.first_name} {r.last_name}</div>

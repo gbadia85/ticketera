@@ -439,7 +439,7 @@ export async function listCashShiftHistory(eventId) {
 export async function listCashShiftSales(shiftId) {
   const { data, error } = await supabase
     .from('reservations')
-    .select('id, first_name, last_name, total_amount, created_at')
+    .select('id, first_name, last_name, total_amount, payment_method, created_at')
     .eq('cash_shift_id', shiftId)
     .eq('status', 'approved')
     .order('created_at', { ascending: false });
@@ -501,4 +501,100 @@ export async function ensureGeneralAdmissionSeats(venueId, price) {
     p_price: price,
   });
   if (error) throw error;
+}
+
+/** Si subió la capacidad de una sala de entrada general, genera las butacas
+ * virtuales que faltan (y las suma a los eventos ya publicados de esa sala). */
+export async function syncGeneralAdmissionCapacity(venueId) {
+  const { error } = await supabase.rpc('sync_general_admission_capacity', { p_venue_id: venueId });
+  if (error) throw error;
+}
+
+// ---------------------------------------------------------------------
+// Reservas expiradas
+// ---------------------------------------------------------------------
+
+/** Borra todas las reservas con status='expired'. Devuelve cuántas borró. */
+export async function deleteExpiredReservations() {
+  const { data, error } = await supabase.rpc('delete_expired_reservations');
+  if (error) throw error;
+  return data; // cantidad borrada
+}
+
+// ---------------------------------------------------------------------
+// Personalización del sitio (nombre, logo, colores) — editable desde
+// el admin, con lectura pública para que el sitio la aplique.
+// ---------------------------------------------------------------------
+
+export async function getSiteSettings() {
+  const { data, error } = await supabase.from('site_settings').select('*').eq('id', true).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateSiteSettings(patch) {
+  const { data, error } = await supabase
+    .from('site_settings')
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('id', true)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function uploadSiteLogo(file) {
+  const ext = file.name.includes('.') ? file.name.split('.').pop() : 'png';
+  const path = `logo-${crypto.randomUUID()}.${ext}`;
+  const { error: uploadError } = await supabase.storage.from('site-assets').upload(path, file, {
+    cacheControl: '3600',
+    upsert: false,
+  });
+  if (uploadError) throw uploadError;
+  const { data } = supabase.storage.from('site-assets').getPublicUrl(path);
+  return data.publicUrl;
+}
+
+// ---------------------------------------------------------------------
+// Vaciado de buckets de Storage (usado por la Zona de Peligro): borra
+// los ARCHIVOS de verdad, no solo las filas de la base — evita que
+// queden imágenes huérfanas ocupando espacio después de un reseteo.
+// ---------------------------------------------------------------------
+async function purgeBucket(bucket) {
+  const { data: entries, error } = await supabase.storage.from(bucket).list('', { limit: 1000 });
+  if (error) throw error;
+
+  const paths = [];
+  for (const entry of entries ?? []) {
+    if (entry.id === null) {
+      // Es una "carpeta" (nuestro esquema guarda cada imagen en
+      // <event_id_o_venue_id>/<archivo>) — listamos adentro.
+      const { data: files } = await supabase.storage.from(bucket).list(entry.name, { limit: 1000 });
+      for (const file of files ?? []) {
+        paths.push(`${entry.name}/${file.name}`);
+      }
+    } else {
+      paths.push(entry.name);
+    }
+  }
+
+  if (paths.length > 0) {
+    const { error: removeError } = await supabase.storage.from(bucket).remove(paths);
+    if (removeError) throw removeError;
+  }
+  return paths.length;
+}
+
+export async function purgeEventImagesStorage() {
+  return purgeBucket('event-images');
+}
+
+export async function purgeVenueImagesStorage() {
+  return purgeBucket('venue-images');
+}
+
+export async function purgeAllUploadedImages() {
+  const a = await purgeEventImagesStorage();
+  const b = await purgeVenueImagesStorage();
+  return a + b;
 }

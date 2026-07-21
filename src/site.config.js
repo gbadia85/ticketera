@@ -23,14 +23,14 @@ export const siteConfig = {
   // IDENTIDAD: nombre, logo, título de pestaña del navegador
   // -------------------------------------------------------------------
   identity: {
-    siteName: 'Aburridos Producciones',
-    tagline: 'Venta de entradas para eventos',
+    siteName: 'Butaca',
+    tagline: 'Venta de entradas y mapa de asientos',
 
     // Título y descripción que aparecen en la pestaña del navegador y
     // en resultados de búsqueda / al compartir el link.
-    metaTitle: 'Aburridos Producciones — Venta de entradas para eventos',
+    metaTitle: 'Butaca — Venta de entradas y mapa de asientos',
     metaDescription:
-      'Comprá entradas y elegí tu butaca para los próximas eventos.',
+      'Comprá entradas y elegí tu butaca para las próximas funciones de teatro.',
 
     // Logo de la marca (se usa en el Navbar). Dos formas de configurarlo:
     //
@@ -63,7 +63,7 @@ export const siteConfig = {
     },
     home: {
       title: 'La cartelera de la semana',
-      subtitle: 'Elegí tu evento, y reservá tu entrada en minutos.',
+      subtitle: 'Elegí tu función, mirá el mapa de la sala y reservá tu butaca en minutos.',
       allVenuesFilter: 'Todas las salas',
       venueFilterPrefix: 'Ver sala:',
       loading: 'Cargando funciones…',
@@ -183,17 +183,17 @@ export const siteConfig = {
     text: 'Butaca — Venta de entradas y mapa de asientos.',
     copyright: '© {year} Butaca. Todos los derechos reservados.',
     contact: {
-      phone: '3462444444', // ej: '+54 9 11 1234-5678'
-      email: 'ventas@aburridosproducciones.com.ar', // ej: 'contacto@butaca.com'
-      address: 'Murphy, Santa Fe', // ej: 'Av. Corrientes 1234, CABA'
+      phone: '', // ej: '+54 9 11 1234-5678'
+      email: '', // ej: 'contacto@butaca.com'
+      address: '', // ej: 'Av. Corrientes 1234, CABA'
     },
     social: [
-      { platform: 'instagram', url: 'xxx' },
-      { platform: 'facebook', url: 'xxx' },
-      { platform: 'x', url: 'xxx' },
-      { platform: 'youtube', url: 'xxx' },
+      { platform: 'instagram', url: '' },
+      { platform: 'facebook', url: '' },
+      { platform: 'x', url: '' },
+      { platform: 'youtube', url: '' },
       { platform: 'tiktok', url: '' },
-      { platform: 'whatsapp', url: 'xxx' },
+      { platform: 'whatsapp', url: '' },
     ],
   },
 

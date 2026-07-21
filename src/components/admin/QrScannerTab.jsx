@@ -136,7 +136,7 @@ const QrScannerTab = () => {
         </Button>
       </div>
 
-      {!manualMode && !result && (
+      {!manualMode && (
         <Card className="overflow-hidden">
           <div className="relative aspect-square bg-black">
             <video ref={videoRef} className="w-full h-full object-cover" muted playsInline />
