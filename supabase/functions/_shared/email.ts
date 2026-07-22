@@ -11,6 +11,7 @@ export async function sendTicketConfirmationEmail(params: {
   emailFrom: string;
   to: string;
   firstName: string;
+  siteName: string;
   eventTitle: string;
   venueName: string;
   eventDate: string;
@@ -23,6 +24,7 @@ export async function sendTicketConfirmationEmail(params: {
     emailFrom,
     to,
     firstName,
+    siteName,
     eventTitle,
     venueName,
     eventDate,
@@ -45,7 +47,8 @@ export async function sendTicketConfirmationEmail(params: {
 
   const html = `
     <div style="font-family: Georgia, serif; max-width: 480px; margin: auto; padding: 24px; background:#14111A; color:#F5EFE3;">
-      <h1 style="color:#C9A227; font-size:22px;">¡Reserva confirmada!</h1>
+      <p style="color:#C9A227; font-size:13px; letter-spacing:0.1em; text-transform:uppercase; margin:0 0 4px;">${siteName}</p>
+      <h1 style="color:#C9A227; font-size:22px; margin-top:0;">¡Reserva confirmada!</h1>
       <p>Hola ${firstName}, tu compra fue aprobada. Estos son los detalles:</p>
       <table style="width:100%; margin: 16px 0; border-collapse: collapse;">
         <tr><td style="padding:6px 0; color:#B4A9BE;">Evento</td><td style="text-align:right;">${eventTitle}</td></tr>
@@ -59,6 +62,7 @@ export async function sendTicketConfirmationEmail(params: {
         <p style="color:#B4A9BE; font-size:12px; margin-top:8px;">Mostrá este código en la puerta el día del evento.</p>
       </div>
       <p style="color:#B4A9BE; font-size:13px;">Si no ves la imagen del QR, la vas a encontrar también adjunta a este mail.</p>
+      <p style="color:#5a5266; font-size:11px; margin-top:24px; border-top:1px solid #2a2433; padding-top:12px;">${siteName}</p>
     </div>
   `;
 
@@ -69,9 +73,9 @@ export async function sendTicketConfirmationEmail(params: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      from: emailFrom,
+      from: withSenderName(emailFrom, siteName),
       to: [to],
-      subject: `Confirmación de compra — ${eventTitle}`,
+      subject: `${siteName} — Confirmación de compra: ${eventTitle}`,
       html,
       attachments: [
         {
@@ -87,4 +91,17 @@ export async function sendTicketConfirmationEmail(params: {
     const detail = await res.text();
     console.error('Error enviando email con Resend:', detail);
   }
+}
+
+// Si EMAIL_FROM es "Entradas <algo@dominio.com>", reemplaza el nombre
+// de por delante ("Entradas") por el nombre del sitio configurado,
+// conservando la dirección de mail tal cual — así el remitente que ve
+// el comprador coincide con el nombre del sitio, sin tener que tocar
+// el secret cada vez que cambia la personalización.
+function withSenderName(emailFrom: string, siteName: string): string {
+  const match = emailFrom.match(/<(.+)>/);
+  if (match) {
+    return `${siteName} <${match[1]}>`;
+  }
+  return emailFrom; // no tiene formato "Nombre <mail>", lo dejamos como está
 }

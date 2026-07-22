@@ -154,7 +154,9 @@ export async function listAllEvents() {
 export async function getEvent(eventId) {
   const { data, error } = await supabase
     .from('events')
-    .select('*, venues ( *, venue_images ( id, url, path, sort_order ) ), event_images ( id, url, path, sort_order )')
+    .select(
+      '*, venues ( *, venue_images ( id, url, path, sort_order ) ), event_images ( id, url, path, sort_order ), event_sponsors ( id, url, path, sort_order )'
+    )
     .eq('id', eventId)
     .single();
   if (error) throw error;
@@ -166,6 +168,7 @@ export async function getEvent(eventId) {
   return {
     ...data,
     event_images: sortImages(data.event_images),
+    event_sponsors: sortImages(data.event_sponsors),
     venues: data.venues ? { ...data.venues, venue_images: sortImages(data.venues.venue_images) } : data.venues,
     sold_out_status: soldOutStatus ?? null,
   };
@@ -336,6 +339,46 @@ export async function reorderEventImage(imageA, imageB) {
   if (e2) throw e2;
 }
 
+// --- Sponsors / auspiciantes de evento (máx. 5, misma mecánica que las
+// imágenes de evento — se guardan en el mismo bucket, bajo una
+// subcarpeta "sponsors") ---
+export async function listEventSponsors(eventId) {
+  const { data, error } = await supabase
+    .from('event_sponsors')
+    .select('*')
+    .eq('event_id', eventId)
+    .order('sort_order');
+  if (error) throw error;
+  return data;
+}
+
+export async function addEventSponsor(eventId, file, nextSortOrder) {
+  const { url, path } = await uploadImageFile('event-images', `${eventId}/sponsors`, file);
+  const { data, error } = await supabase
+    .from('event_sponsors')
+    .insert({ event_id: eventId, url, path, sort_order: nextSortOrder })
+    .select()
+    .single();
+  if (error) {
+    await deleteImageFile('event-images', path);
+    throw error;
+  }
+  return data;
+}
+
+export async function deleteEventSponsor(sponsor) {
+  const { error } = await supabase.from('event_sponsors').delete().eq('id', sponsor.id);
+  if (error) throw error;
+  await deleteImageFile('event-images', sponsor.path);
+}
+
+export async function reorderEventSponsor(a, b) {
+  const { error: e1 } = await supabase.from('event_sponsors').update({ sort_order: b.sort_order }).eq('id', a.id);
+  if (e1) throw e1;
+  const { error: e2 } = await supabase.from('event_sponsors').update({ sort_order: a.sort_order }).eq('id', b.id);
+  if (e2) throw e2;
+}
+
 // --- Imágenes de sala ---
 export async function listVenueImages(venueId) {
   const { data, error } = await supabase
@@ -439,9 +482,8 @@ export async function listCashShiftHistory(eventId) {
 export async function listCashShiftSales(shiftId) {
   const { data, error } = await supabase
     .from('reservations')
-    .select('id, first_name, last_name, total_amount, payment_method, created_at')
+    .select('id, first_name, last_name, total_amount, payment_method, status, created_at')
     .eq('cash_shift_id', shiftId)
-    .eq('status', 'approved')
     .order('created_at', { ascending: false });
   if (error) throw error;
   return data;
@@ -464,14 +506,23 @@ export async function listEventReservations(eventId) {
   }));
 }
 
-/** Marca el ingreso de una reserva a partir del contenido escaneado del QR. */
-export async function checkInReservation(reservationId, checkedInBy) {
-  const { data, error } = await supabase.rpc('check_in_reservation', {
+/** Consulta una reserva para check-in SIN marcar nada todavía (paso 1: leer el QR). */
+export async function lookupReservationCheckin(reservationId) {
+  const { data, error } = await supabase.rpc('lookup_reservation_checkin', {
+    p_reservation_id: reservationId,
+  });
+  if (error) throw error;
+  return data; // { valid, reason?, already_inside, first_name, last_name, seat_labels, checked_in_at }
+}
+
+/** Confirma el ingreso de verdad (paso 2: cuando la puerta le da el OK). */
+export async function confirmReservationCheckin(reservationId, checkedInBy) {
+  const { data, error } = await supabase.rpc('confirm_reservation_checkin', {
     p_reservation_id: reservationId,
     p_checked_in_by: checkedInBy,
   });
   if (error) throw error;
-  return data; // { valid, reason?, already_inside, first_name, last_name, seat_labels, checked_in_at }
+  return data;
 }
 
 /** La persona sale (puede volver a escanear su QR más tarde para reingresar). */
@@ -597,4 +648,55 @@ export async function purgeAllUploadedImages() {
   const a = await purgeEventImagesStorage();
   const b = await purgeVenueImagesStorage();
   return a + b;
+}
+
+// ---------------------------------------------------------------------
+// Devolución de entradas (venta en puerta)
+// ---------------------------------------------------------------------
+
+/** Devuelve una entrada: libera la butaca y la marca como reembolsada.
+ * p_refunded_amount es lo que el cajero cargó que devolvió de verdad
+ * (puede ser menor al total original, por ejemplo si hay un descuento). */
+export async function refundReservation(reservationId, refundedAmount, by, cashShiftId) {
+  const { data, error } = await supabase.rpc('refund_reservation', {
+    p_reservation_id: reservationId,
+    p_refunded_amount: refundedAmount,
+    p_by: by,
+    p_cash_shift_id: cashShiftId,
+  });
+  if (error) throw error;
+  return data; // { ok, reservation_id, original_amount, refunded_amount }
+}
+
+/** Reservas aprobadas de un evento que se pueden devolver (para buscar en la venta en puerta). */
+export async function searchRefundableReservations(eventId, query) {
+  let q = supabase
+    .from('reservations')
+    .select(
+      'id, first_name, last_name, total_amount, payment_method, created_at, reservation_seats ( event_seats ( seats ( label ) ) )'
+    )
+    .eq('event_id', eventId)
+    .eq('status', 'approved')
+    .order('created_at', { ascending: false })
+    .limit(20);
+  if (query) {
+    q = q.or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%`);
+  }
+  const { data, error } = await q;
+  if (error) throw error;
+  return data.map((r) => ({
+    ...r,
+    seatLabels: (r.reservation_seats ?? []).map((rs) => rs.event_seats?.seats?.label).filter(Boolean),
+  }));
+}
+
+/** Devoluciones procesadas durante una caja puntual (para el resumen del arqueo). */
+export async function listCashShiftRefunds(shiftId) {
+  const { data, error } = await supabase
+    .from('reservations')
+    .select('id, first_name, last_name, refunded_amount, refunded_at')
+    .eq('refund_cash_shift_id', shiftId)
+    .order('refunded_at', { ascending: false });
+  if (error) throw error;
+  return data;
 }

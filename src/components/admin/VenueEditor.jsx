@@ -262,6 +262,12 @@ const VenueEditor = ({ venueId }) => {
     return map;
   }, [seats]);
 
+  const rowLabels = useMemo(() => {
+    const map = new Map();
+    for (const s of seats) if (!map.has(s.pos_row)) map.set(s.pos_row, s.row_label);
+    return map;
+  }, [seats]);
+
   if (loading || !venue) return <p className="text-muted-foreground text-sm">Cargando sala…</p>;
 
   return (
@@ -503,16 +509,23 @@ const VenueEditor = ({ venueId }) => {
               <div className="overflow-x-auto">
                 <div
                   className="text-center text-[10px] tracking-[0.3em] text-gold border-b border-gold/30 pb-2 mb-3"
-                  style={{ minWidth: cols * SEAT_SIZE }}
+                  style={{ minWidth: (cols + 1) * SEAT_SIZE }}
                 >
                   ESCENARIO
                 </div>
                 <div
                   className="inline-grid gap-1.5 p-4"
-                  style={{ gridTemplateColumns: `repeat(${cols}, ${SEAT_SIZE}px)` }}
+                  style={{ gridTemplateColumns: `${SEAT_SIZE}px repeat(${cols}, ${SEAT_SIZE}px)` }}
                 >
-                  {Array.from({ length: rows }).map((_, r) =>
-                    Array.from({ length: cols }).map((_, c) => {
+                  {Array.from({ length: rows }).map((_, r) => [
+                    <div
+                      key={`row-label-${r}`}
+                      style={{ width: SEAT_SIZE, height: SEAT_SIZE }}
+                      className="flex items-center justify-center text-xs font-mono text-gold/80"
+                    >
+                      {rowLabels.get(r) ?? ''}
+                    </div>,
+                    ...Array.from({ length: cols }).map((_, c) => {
                       const seat = seatGrid.get(`${r}-${c}`);
                       if (!seat) return <div key={`${r}-${c}`} style={{ width: SEAT_SIZE, height: SEAT_SIZE }} />;
                       const zone = zones.find((z) => z.id === seat.zone_id);
@@ -534,8 +547,8 @@ const VenueEditor = ({ venueId }) => {
                           {seat.is_active ? seat.seat_number : '✕'}
                         </button>
                       );
-                    })
-                  )}
+                    }),
+                  ])}
                 </div>
               </div>
             </>

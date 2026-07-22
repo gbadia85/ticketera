@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { CalendarDays, Image, MapPin, Pencil, Plus, Rocket, Trash2, XCircle } from 'lucide-react';
+import { CalendarDays, Image, Briefcase, MapPin, Pencil, Plus, Rocket, Trash2, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,17 +19,21 @@ import { formatCurrency, formatDateTime } from '@/lib/utils';
 import ImageManager from '@/components/admin/ImageManager';
 import {
   addEventImage,
+  addEventSponsor,
   createEvent,
   deleteEvent,
   deleteEventImage,
+  deleteEventSponsor,
   ensureGeneralAdmissionSeats,
   getEventZonePrices,
   listAllEvents,
   listEventImages,
+  listEventSponsors,
   listVenues,
   listZones,
   publishEvent,
   reorderEventImage,
+  reorderEventSponsor,
   setEventZonePrices,
   updateEvent,
 } from '@/lib/api';
@@ -65,10 +69,11 @@ const EventsTab = () => {
   const [venues, setVenues] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [form, setForm] = useState({ title: '', description: '', venue_id: '', event_date: '' });
+  const [form, setForm] = useState({ title: '', description: '', venue_id: '', event_date: '', sponsors_label: '' });
   const [pricingEventId, setPricingEventId] = useState(null);
   const [editingEvent, setEditingEvent] = useState(null);
   const [imagesEvent, setImagesEvent] = useState(null);
+  const [sponsorsEvent, setSponsorsEvent] = useState(null);
 
   const reload = () => {
     setLoading(true);
@@ -90,10 +95,11 @@ const EventsTab = () => {
         description: form.description || null,
         venue_id: form.venue_id,
         event_date: new Date(form.event_date).toISOString(),
+        sponsors_label: form.sponsors_label || null,
         status: 'draft',
       });
       setDialogOpen(false);
-      setForm({ title: '', description: '', venue_id: '', event_date: '' });
+      setForm({ title: '', description: '', venue_id: '', event_date: '', sponsors_label: '' });
       reload();
       setPricingEventId(event.id);
     } catch (err) {
@@ -167,6 +173,17 @@ const EventsTab = () => {
                   required
                 />
               </div>
+              <div className="space-y-2">
+                <Label>Etiqueta de sponsors (opcional)</Label>
+                <Input
+                  value={form.sponsors_label}
+                  onChange={(e) => setForm({ ...form, sponsors_label: e.target.value })}
+                  placeholder='Ej: "Sponsors", "Auspiciantes", "Con el apoyo de"'
+                />
+                <p className="text-xs text-muted-foreground">
+                  Las imágenes de sponsors se cargan después de crear el evento, desde su fila en la lista.
+                </p>
+              </div>
               <DialogFooter>
                 <Button type="submit">Crear evento</Button>
               </DialogFooter>
@@ -199,6 +216,9 @@ const EventsTab = () => {
               <div className="flex items-center gap-2">
                 <button onClick={() => setImagesEvent(event)} className="text-muted-foreground hover:text-gold p-2" title="Imágenes">
                   <Image className="h-4 w-4" />
+                </button>
+                <button onClick={() => setSponsorsEvent(event)} className="text-muted-foreground hover:text-gold p-2" title="Sponsors">
+                  <Briefcase className="h-4 w-4" />
                 </button>
                 <button onClick={() => setEditingEvent(event)} className="text-muted-foreground hover:text-gold p-2" title="Editar">
                   <Pencil className="h-4 w-4" />
@@ -247,6 +267,7 @@ const EventsTab = () => {
       )}
 
       {imagesEvent && <EventImagesDialog event={imagesEvent} onClose={() => setImagesEvent(null)} />}
+      {sponsorsEvent && <EventSponsorsDialog event={sponsorsEvent} onClose={() => setSponsorsEvent(null)} />}
     </div>
   );
 };
@@ -307,6 +328,77 @@ const EventImagesDialog = ({ event, onClose }) => {
             onUpload={handleUpload}
             onDelete={handleDelete}
             onReorder={handleReorder}
+          />
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Cerrar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+const MAX_EVENT_SPONSORS = 5;
+
+const EventSponsorsDialog = ({ event, onClose }) => {
+  const [sponsors, setSponsors] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const reload = () => {
+    setLoading(true);
+    listEventSponsors(event.id)
+      .then(setSponsors)
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(reload, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleUpload = async (file) => {
+    const nextSortOrder = sponsors.length > 0 ? Math.max(...sponsors.map((s) => s.sort_order)) + 1 : 0;
+    const created = await addEventSponsor(event.id, file, nextSortOrder);
+    setSponsors([...sponsors, created]);
+  };
+
+  const handleDelete = async (sponsor) => {
+    await deleteEventSponsor(sponsor);
+    setSponsors(sponsors.filter((s) => s.id !== sponsor.id));
+  };
+
+  const handleReorder = async (a, b) => {
+    await reorderEventSponsor(a, b);
+    setSponsors(
+      sponsors
+        .map((s) => {
+          if (s.id === a.id) return { ...s, sort_order: b.sort_order };
+          if (s.id === b.id) return { ...s, sort_order: a.sort_order };
+          return s;
+        })
+        .sort((x, y) => x.sort_order - y.sort_order)
+    );
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Sponsors de "{event.title}"</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground -mt-2">
+          Se muestran en una sección aparte al entrar al evento, bajo la etiqueta "
+          {event.sponsors_label || 'Sponsors'}" (editable desde "Editar evento").
+        </p>
+        {loading ? (
+          <p className="text-sm text-muted-foreground">Cargando…</p>
+        ) : (
+          <ImageManager
+            images={sponsors}
+            maxImages={MAX_EVENT_SPONSORS}
+            onUpload={handleUpload}
+            onDelete={handleDelete}
+            onReorder={handleReorder}
+            coverLabel="Primero"
           />
         )}
         <DialogFooter>
@@ -434,6 +526,7 @@ const EditEventDialog = ({ event, venues, onClose, onSaved }) => {
     venue_id: event.venue_id,
     event_date: toDatetimeLocalValue(event.event_date),
     manually_sold_out: event.manually_sold_out ?? false,
+    sponsors_label: event.sponsors_label ?? '',
   });
   const [saving, setSaving] = useState(false);
 
@@ -448,6 +541,7 @@ const EditEventDialog = ({ event, venues, onClose, onSaved }) => {
         description: form.description || null,
         event_date: new Date(form.event_date).toISOString(),
         manually_sold_out: form.manually_sold_out,
+        sponsors_label: form.sponsors_label || null,
       };
       if (canChangeVenue) patch.venue_id = form.venue_id;
       await updateEvent(event.id, patch);
@@ -518,6 +612,14 @@ const EditEventDialog = ({ event, venues, onClose, onSaved }) => {
             />
             Marcar como agotado manualmente
           </label>
+          <div className="space-y-2">
+            <Label>Etiqueta de sponsors (opcional)</Label>
+            <Input
+              value={form.sponsors_label}
+              onChange={(e) => setForm({ ...form, sponsors_label: e.target.value })}
+              placeholder='Ej: "Sponsors", "Auspiciantes"'
+            />
+          </div>
           <DialogFooter>
             <Button type="submit" disabled={saving}>
               {saving ? 'Guardando…' : 'Guardar cambios'}

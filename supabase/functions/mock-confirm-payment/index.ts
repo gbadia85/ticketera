@@ -83,11 +83,18 @@ Deno.serve(async (req: Request) => {
 
       const seatLabels = (seatRows ?? []).map((r: any) => r.event_seats?.seats?.label).filter(Boolean);
 
+      const { data: siteSettings } = await supabase
+        .from('site_settings')
+        .select('site_name')
+        .eq('id', true)
+        .maybeSingle();
+
       await sendTicketConfirmationEmail({
         resendApiKey,
         emailFrom,
         to: reservation.email,
         firstName: reservation.first_name,
+        siteName: siteSettings?.site_name || 'Butaca',
         eventTitle: event?.title ?? 'Evento',
         venueName: (event as any)?.venues?.name ?? '',
         eventDate: event?.event_date ?? new Date().toISOString(),

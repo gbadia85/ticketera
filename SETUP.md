@@ -184,6 +184,22 @@ Además agrega:
 Corré **`supabase/migrations/0008_fixes_payments_settings.sql`**
 completo en el SQL Editor.
 
+### 1.2.7 — Aplicar la migración 0009 (sponsors, check-in con OK, evento habilitado, devoluciones)
+
+Agrega:
+- Sponsors/auspiciantes por evento (hasta 5 imágenes, etiqueta editable).
+- Check-in en dos pasos: leer el QR ya no marca el ingreso solo —
+  ahora la puerta tiene que tocar "OK, dejar entrar" para confirmarlo.
+- "Habilitar ingreso al evento": solo se puede hacer check-in de
+  entradas de un evento habilitado, para que nadie entre con el QR de
+  otra función.
+- Devolución de entradas desde la venta en puerta: libera la butaca,
+  y el cajero carga cuánto devolvió de verdad (puede ser distinto al
+  monto original, por ejemplo si hay un descuento en la devolución).
+
+Corré **`supabase/migrations/0009_sponsors_checkin_refunds.sql`**
+completo en el SQL Editor.
+
 ### 1.3 — (Opcional) Cargar datos de ejemplo
 
 Si querés una sala y un evento de prueba ya armados para no cargar todo
@@ -445,6 +461,7 @@ supabase migration repair --status applied 0005
 supabase migration repair --status applied 0006
 supabase migration repair --status applied 0007
 supabase migration repair --status applied 0008
+supabase migration repair --status applied 0009
 ```
 
 Verificá que quedó todo sincronizado:

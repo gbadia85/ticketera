@@ -1,12 +1,30 @@
 import React, { useEffect, useRef, useState } from 'react';
 import jsQR from 'jsqr';
-import { AlertTriangle, Camera, CheckCircle2, LogOut, Pencil, RotateCcw, XCircle } from 'lucide-react';
+import {
+  AlertTriangle,
+  Camera,
+  CheckCircle2,
+  LogOut,
+  Pencil,
+  Power,
+  RotateCcw,
+  ThumbsUp,
+  XCircle,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAdminAuth } from '@/hooks/useAdminAuth';
 import { useToast } from '@/components/ui/use-toast';
-import { cancelReservationCheckin, checkInReservation, markReservationExit } from '@/lib/api';
+import {
+  cancelReservationCheckin,
+  confirmReservationCheckin,
+  listAllEvents,
+  lookupReservationCheckin,
+  markReservationExit,
+  updateEvent,
+} from '@/lib/api';
+import { formatDateTime } from '@/lib/utils';
 
 const QrScannerTab = () => {
   const { session } = useAdminAuth();
@@ -19,20 +37,29 @@ const QrScannerTab = () => {
   const rafRef = useRef(null);
   const pausedRef = useRef(false);
 
+  const [events, setEvents] = useState([]);
+  const [showEventPanel, setShowEventPanel] = useState(false);
+
   const [cameraError, setCameraError] = useState(null);
   const [result, setResult] = useState(null); // { valid, already_inside, first_name, last_name, seat_labels, reason }
+  const [confirming, setConfirming] = useState(false);
   const [manualCode, setManualCode] = useState('');
   const [manualMode, setManualMode] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
 
+  const reloadEvents = () => {
+    listAllEvents().then((data) => setEvents(data.filter((e) => e.status === 'scheduled')));
+  };
+  useEffect(reloadEvents, []);
+
   // Pausamos el escaneo mientras haya un resultado en pantalla — así la
-  // persona de la puerta tiene todo el tiempo que necesite para leerlo,
-  // y solo se retoma cuando ella misma toca "Siguiente".
+  // persona de la puerta tiene todo el tiempo que necesite para leerlo
+  // y decidir, y solo se retoma cuando ella misma toca "Siguiente".
   const processCode = async (code) => {
     if (pausedRef.current) return;
     pausedRef.current = true;
     try {
-      const data = await checkInReservation(code.trim(), scannedBy);
+      const data = await lookupReservationCheckin(code.trim());
       setResult({ ...data, reservation_id: data.reservation_id ?? code.trim() });
     } catch (err) {
       setResult({ valid: false, reason: 'error', detail: err.message });
@@ -99,6 +126,18 @@ const QrScannerTab = () => {
     setManualCode('');
   };
 
+  const handleConfirmEntry = async () => {
+    setConfirming(true);
+    try {
+      const data = await confirmReservationCheckin(result.reservation_id, scannedBy);
+      setResult({ ...data, reservation_id: result.reservation_id });
+    } catch (err) {
+      toast({ title: 'No pudimos confirmar el ingreso', description: err.message, variant: 'destructive' });
+    } finally {
+      setConfirming(false);
+    }
+  };
+
   const handleMarkExit = async () => {
     setActionBusy(true);
     try {
@@ -126,6 +165,17 @@ const QrScannerTab = () => {
     }
   };
 
+  const handleToggleCheckin = async (event) => {
+    try {
+      await updateEvent(event.id, { checkin_enabled: !event.checkin_enabled });
+      reloadEvents();
+    } catch (err) {
+      toast({ title: 'No pudimos actualizar el evento', description: err.message, variant: 'destructive' });
+    }
+  };
+
+  const enabledEvents = events.filter((e) => e.checkin_enabled);
+
   return (
     <div className="max-w-md mx-auto space-y-4">
       <div className="flex items-center justify-between">
@@ -135,6 +185,47 @@ const QrScannerTab = () => {
           {manualMode ? 'Usar cámara' : 'Ingresar código a mano'}
         </Button>
       </div>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <button
+            onClick={() => setShowEventPanel((s) => !s)}
+            className="flex items-center justify-between w-full text-left"
+          >
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Power className="h-4 w-4 text-gold" /> Habilitar ingreso al evento
+            </CardTitle>
+            <span className="text-xs text-muted-foreground">
+              {enabledEvents.length === 0
+                ? 'Ninguno habilitado'
+                : `${enabledEvents.length} habilitado${enabledEvents.length > 1 ? 's' : ''}`}
+            </span>
+          </button>
+        </CardHeader>
+        {showEventPanel && (
+          <CardContent className="space-y-2 max-h-56 overflow-y-auto pt-0">
+            <p className="text-xs text-muted-foreground mb-2">
+              Solo se puede confirmar el ingreso de entradas de eventos habilitados acá — así nadie entra con el QR
+              de otra función.
+            </p>
+            {events.length === 0 && <p className="text-xs text-muted-foreground">No hay eventos publicados.</p>}
+            {events.map((e) => (
+              <label key={e.id} className="flex items-center justify-between gap-2 text-sm py-1 cursor-pointer">
+                <span className="min-w-0">
+                  <span className="block truncate">{e.title}</span>
+                  <span className="block text-xs text-muted-foreground">{formatDateTime(e.event_date)}</span>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={!!e.checkin_enabled}
+                  onChange={() => handleToggleCheckin(e)}
+                  className="h-4 w-4 rounded border-input shrink-0"
+                />
+              </label>
+            ))}
+          </CardContent>
+        )}
+      </Card>
 
       {!manualMode && (
         <Card className="overflow-hidden">
@@ -179,10 +270,13 @@ const QrScannerTab = () => {
           <CardContent className="p-5 text-center space-y-3">
             {result.valid && !result.already_inside && (
               <>
-                <CheckCircle2 className="h-10 w-10 text-success mx-auto" />
+                <ThumbsUp className="h-10 w-10 text-gold mx-auto" />
                 <p className="font-display text-xl">{result.first_name} {result.last_name}</p>
                 <p className="text-sm text-muted-foreground">Butacas: {result.seat_labels?.join(', ') || '—'}</p>
-                <p className="text-xs text-success">Ingreso registrado ✓</p>
+                <p className="text-xs text-muted-foreground">Confirmá el ingreso para que quede registrado.</p>
+                <Button className="w-full" disabled={confirming} onClick={handleConfirmEntry}>
+                  <CheckCircle2 className="h-4 w-4 mr-2" /> {confirming ? 'Confirmando…' : 'OK, dejar entrar'}
+                </Button>
               </>
             )}
 
@@ -210,12 +304,14 @@ const QrScannerTab = () => {
                 <p className="text-xs text-muted-foreground">
                   {result.reason === 'not_found' && 'No encontramos esa reserva.'}
                   {result.reason === 'not_paid' && 'Esta reserva todavía no está pagada.'}
+                  {result.reason === 'checkin_not_enabled' &&
+                    'El ingreso para el evento de esta entrada no está habilitado — activalo arriba en "Habilitar ingreso al evento".'}
                   {result.reason === 'error' && (result.detail || 'Ocurrió un error al verificar.')}
                 </p>
               </>
             )}
 
-            <Button className="w-full mt-2" onClick={resumeScanning}>
+            <Button className="w-full mt-2" variant={result.valid && !result.already_inside ? 'outline' : 'default'} onClick={resumeScanning}>
               <RotateCcw className="h-4 w-4 mr-2" /> Siguiente
             </Button>
           </CardContent>

@@ -119,6 +119,7 @@ const EventDetailsPage = () => {
   if (!event) return null;
 
   const eventImages = event.event_images ?? [];
+  const eventSponsors = event.event_sponsors ?? [];
   const mainImage = eventImages[activeImage]?.url ?? eventImages[0]?.url;
   const isSoldOut = !!event.sold_out_status?.is_sold_out;
   const salesClosed = new Date() > new Date(new Date(event.event_date).getTime() + SALES_CUTOFF_MINUTES * 60000);
@@ -138,54 +139,66 @@ const EventDetailsPage = () => {
           <ArrowLeft className="h-4 w-4 mr-2" /> Volver a la cartelera
         </Button>
 
-        {eventImages.length > 0 && (
-          <div className="mb-8 max-w-2xl">
-            <div className="aspect-video rounded-lg overflow-hidden border border-border relative">
-              <img src={mainImage} alt={event.title} className="w-full h-full object-cover" />
+        {/* Hero: info del evento a la izquierda (o arriba, en mobile), imágenes a la derecha */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex flex-col lg:flex-row gap-8 mb-8"
+        >
+          <div className="lg:w-2/5 lg:order-1 order-1">
+            <div className="flex items-center gap-3 mb-2 flex-wrap">
+              <h1 className="font-display text-3xl md:text-4xl">{event.title}</h1>
               {isSoldOut && (
-                <span className="absolute top-3 right-3 bg-destructive text-destructive-foreground text-xs font-bold px-3 py-1 rounded-full rotate-3 shadow-lg">
+                <span className="bg-destructive text-destructive-foreground text-xs font-bold px-3 py-1 rounded-full">
                   AGOTADO
                 </span>
               )}
             </div>
-            {eventImages.length > 1 && (
-              <div className="flex gap-2 overflow-x-auto mt-2">
-                {eventImages.map((img, i) => (
-                  <button
-                    key={img.id}
-                    onClick={() => setActiveImage(i)}
-                    className={`h-14 w-20 shrink-0 rounded-md overflow-hidden border-2 transition-colors ${
-                      i === activeImage ? 'border-gold' : 'border-transparent opacity-70 hover:opacity-100'
-                    }`}
-                  >
-                    <img src={img.url} alt="" className="w-full h-full object-cover" />
-                  </button>
-                ))}
-              </div>
+            {event.description && (
+              <p className="text-muted-foreground text-sm mb-4 whitespace-pre-line">{event.description}</p>
             )}
+            <div className="flex flex-col gap-2 text-sm text-muted-foreground">
+              <span className="flex items-center gap-2">
+                <CalendarDays className="h-4 w-4" /> {formatDateTime(event.event_date)}
+              </span>
+              <span className="flex items-center gap-2">
+                <MapPin className="h-4 w-4" />
+                {event.venues?.name}
+                {event.venues?.address ? ` — ${event.venues.address}` : ''}
+              </span>
+              <Link to={`/salas/${event.venues?.id}`} className="text-xs text-gold hover:underline w-fit">
+                {t.salaSeeMore} →
+              </Link>
+            </div>
           </div>
-        )}
+
+          {eventImages.length > 0 && (
+            <div className="lg:w-3/5 order-2">
+              <div className="aspect-video rounded-lg overflow-hidden border border-border relative">
+                <img src={mainImage} alt={event.title} className="w-full h-full object-cover" />
+              </div>
+              {eventImages.length > 1 && (
+                <div className="flex gap-2 overflow-x-auto mt-2">
+                  {eventImages.map((img, i) => (
+                    <button
+                      key={img.id}
+                      onClick={() => setActiveImage(i)}
+                      className={`h-14 w-20 shrink-0 rounded-md overflow-hidden border-2 transition-colors ${
+                        i === activeImage ? 'border-gold' : 'border-transparent opacity-70 hover:opacity-100'
+                      }`}
+                    >
+                      <img src={img.url} alt="" className="w-full h-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </motion.div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2">
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
-              <div className="flex items-center gap-3 mb-2 flex-wrap">
-                <h1 className="font-display text-3xl md:text-4xl">{event.title}</h1>
-                {isSoldOut && (
-                  <span className="bg-destructive text-destructive-foreground text-xs font-bold px-3 py-1 rounded-full">
-                    AGOTADO
-                  </span>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-4 text-sm text-muted-foreground mb-6">
-                <span className="flex items-center gap-2">
-                  <CalendarDays className="h-4 w-4" /> {formatDateTime(event.event_date)}
-                </span>
-                <span className="flex items-center gap-2">
-                  <MapPin className="h-4 w-4" /> {event.venues?.name}
-                </span>
-              </div>
-
               {myHeldSeats.length > 0 && (
                 <div className="mb-6 rounded-lg border border-gold/40 bg-gold/10 p-4 flex items-center justify-between gap-4">
                   <p className="text-sm">
@@ -338,34 +351,50 @@ const EventDetailsPage = () => {
                 </Card>
               )}
 
-              {/* Info de la sala — siempre visible, chica, al costado */}
-              <Card>
-                <CardContent className="p-4 flex gap-3 items-start">
-                  {event.venues?.venue_images?.[0]?.url ? (
-                    <img
-                      src={event.venues.venue_images[0].url}
-                      alt={event.venues?.name}
-                      className="h-14 w-14 rounded-md object-cover shrink-0"
-                    />
-                  ) : (
-                    <div className="h-14 w-14 rounded-md shrink-0 flex items-center justify-center bg-gradient-to-br from-accent to-muted">
-                      <Theater className="h-6 w-6 text-gold" />
-                    </div>
-                  )}
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">{event.venues?.name}</p>
-                    {event.venues?.address && (
-                      <p className="text-xs text-muted-foreground truncate">{event.venues.address}</p>
+              {(event.venues?.venue_images?.length > 0 || event.venues?.description) && (
+                <Card>
+                  <CardContent className="p-4 flex gap-3 items-start">
+                    {event.venues?.venue_images?.[0]?.url ? (
+                      <img
+                        src={event.venues.venue_images[0].url}
+                        alt={event.venues?.name}
+                        className="h-14 w-14 rounded-md object-cover shrink-0"
+                      />
+                    ) : (
+                      <div className="h-14 w-14 rounded-md shrink-0 flex items-center justify-center bg-gradient-to-br from-accent to-muted">
+                        <Theater className="h-6 w-6 text-gold" />
+                      </div>
                     )}
-                    <Link to={`/salas/${event.venues?.id}`} className="text-xs text-gold hover:underline">
-                      {t.salaSeeMore} →
-                    </Link>
-                  </div>
-                </CardContent>
-              </Card>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{event.venues?.name}</p>
+                      {event.venues?.description && (
+                        <p className="text-xs text-muted-foreground line-clamp-2">{event.venues.description}</p>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </motion.div>
           </div>
         </div>
+
+        {eventSponsors.length > 0 && (
+          <div className="mt-14 pt-8 border-t border-border/60 text-center">
+            <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground mb-6">
+              {event.sponsors_label || 'Sponsors'}
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-8">
+              {eventSponsors.map((sponsor) => (
+                <img
+                  key={sponsor.id}
+                  src={sponsor.url}
+                  alt={event.sponsors_label || 'Sponsor'}
+                  className="h-12 md:h-16 object-contain opacity-90 hover:opacity-100 transition-opacity"
+                />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
         <Footer />

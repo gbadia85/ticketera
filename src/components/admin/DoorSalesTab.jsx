@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, DollarSign, Lock, Minus, Plus, Printer, Ticket, Unlock, Users } from 'lucide-react';
+import { CheckCircle2, DollarSign, Lock, Minus, Plus, Printer, RotateCcw, Search, Ticket, Unlock, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,8 +14,11 @@ import {
   closeCashShift,
   getOpenCashShift,
   listAllEvents,
+  listCashShiftRefunds,
   listCashShiftSales,
   openCashShift,
+  refundReservation,
+  searchRefundableReservations,
 } from '@/lib/api';
 import { createDoorSale } from '@/lib/booking';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
@@ -29,6 +32,7 @@ const DoorSalesTab = () => {
   const [eventId, setEventId] = useState('');
   const [shift, setShift] = useState(undefined); // undefined = cargando, null = no hay caja abierta
   const [sales, setSales] = useState([]);
+  const [refunds, setRefunds] = useState([]);
 
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [quantity, setQuantity] = useState(1);
@@ -43,6 +47,14 @@ const DoorSalesTab = () => {
   const [closeNotes, setCloseNotes] = useState('');
   const [closingResult, setClosingResult] = useState(null);
 
+  const [refundDialogOpen, setRefundDialogOpen] = useState(false);
+  const [refundQuery, setRefundQuery] = useState('');
+  const [refundResults, setRefundResults] = useState([]);
+  const [refundSearching, setRefundSearching] = useState(false);
+  const [refundTarget, setRefundTarget] = useState(null); // reserva elegida para devolver
+  const [refundAmountInput, setRefundAmountInput] = useState('');
+  const [refunding, setRefunding] = useState(false);
+
   const { seats } = useEventSeats(eventId || null);
 
   useEffect(() => {
@@ -55,8 +67,10 @@ const DoorSalesTab = () => {
     setShift(openShift ?? null);
     if (openShift) {
       setSales(await listCashShiftSales(openShift.id));
+      setRefunds(await listCashShiftRefunds(openShift.id));
     } else {
       setSales([]);
+      setRefunds([]);
     }
   };
 
@@ -126,7 +140,8 @@ const DoorSalesTab = () => {
 
   const cashSales = sales.filter((s) => s.payment_method === 'efectivo');
   const salesTotal = cashSales.reduce((sum, s) => sum + Number(s.total_amount), 0);
-  const expectedInDrawer = Number(shift?.opening_amount ?? 0) + salesTotal;
+  const refundsTotal = refunds.reduce((sum, r) => sum + Number(r.refunded_amount), 0);
+  const expectedInDrawer = Number(shift?.opening_amount ?? 0) + salesTotal - refundsTotal;
 
   const handleCloseShift = async () => {
     try {
@@ -178,6 +193,50 @@ const DoorSalesTab = () => {
       });
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const openRefundDialog = () => {
+    setRefundQuery('');
+    setRefundResults([]);
+    setRefundTarget(null);
+    setRefundDialogOpen(true);
+  };
+
+  const handleRefundSearch = async (e) => {
+    e?.preventDefault();
+    setRefundSearching(true);
+    try {
+      setRefundResults(await searchRefundableReservations(eventId, refundQuery.trim()));
+    } catch (err) {
+      toast({ title: 'No pudimos buscar', description: err.message, variant: 'destructive' });
+    } finally {
+      setRefundSearching(false);
+    }
+  };
+
+  const handlePickRefundTarget = (reservation) => {
+    setRefundTarget(reservation);
+    setRefundAmountInput(String(reservation.total_amount));
+  };
+
+  const handleConfirmRefund = async () => {
+    setRefunding(true);
+    try {
+      await refundReservation(refundTarget.id, Number(refundAmountInput) || 0, adminEmail, shift.id);
+      toast({ title: 'Devolución registrada', description: 'La butaca vuelve a estar disponible para la venta.' });
+      setRefundDialogOpen(false);
+      setRefundTarget(null);
+      await reloadShift(eventId);
+    } catch (err) {
+      const messages = { not_refundable: 'Esta reserva ya no se puede devolver (no está aprobada).' };
+      toast({
+        title: 'No pudimos procesar la devolución',
+        description: messages[err.message] ?? err.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setRefunding(false);
     }
   };
 
@@ -242,9 +301,14 @@ const DoorSalesTab = () => {
                   </span>
                 )}
               </div>
-              <Button variant="outline" size="sm" onClick={() => setCloseDialogOpen(true)}>
-                <Lock className="h-4 w-4 mr-2" /> Cerrar caja
-              </Button>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button variant="outline" size="sm" onClick={openRefundDialog}>
+                  <RotateCcw className="h-4 w-4 mr-2" /> Devolver entrada
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setCloseDialogOpen(true)}>
+                  <Lock className="h-4 w-4 mr-2" /> Cerrar caja
+                </Button>
+              </div>
             </CardContent>
           </Card>
 
@@ -373,14 +437,31 @@ const DoorSalesTab = () => {
                   </CardHeader>
                   <CardContent className="space-y-2 max-h-56 overflow-y-auto">
                     {sales.map((s) => (
-                      <div key={s.id} className="flex justify-between text-sm">
+                      <div key={s.id} className={`flex justify-between text-sm ${s.status === 'refunded' ? 'opacity-50' : ''}`}>
                         <span>
                           {s.first_name} {s.last_name}
                           <span className="ml-2 text-xs text-muted-foreground">
                             {{ efectivo: 'Contado', transferencia: 'Transferencia', simulado: 'Otro' }[s.payment_method] ?? s.payment_method}
+                            {s.status === 'refunded' ? ' · devuelta' : ''}
                           </span>
                         </span>
-                        <span>{formatCurrency(s.total_amount)}</span>
+                        <span className={s.status === 'refunded' ? 'line-through' : ''}>{formatCurrency(s.total_amount)}</span>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+
+              {refunds.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm text-muted-foreground">Devoluciones de esta caja</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2 max-h-56 overflow-y-auto">
+                    {refunds.map((r) => (
+                      <div key={r.id} className="flex justify-between text-sm">
+                        <span>{r.first_name} {r.last_name}</span>
+                        <span className="text-destructive">-{formatCurrency(r.refunded_amount)}</span>
                       </div>
                     ))}
                   </CardContent>
@@ -420,6 +501,87 @@ const DoorSalesTab = () => {
             <Button onClick={() => setLastSale(null)}>
               <Plus className="h-4 w-4 mr-2" /> Nueva venta
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Devolución de entradas */}
+      <Dialog open={refundDialogOpen} onOpenChange={(open) => { setRefundDialogOpen(open); if (!open) setRefundTarget(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{refundTarget ? 'Procesar devolución' : 'Buscar entrada para devolver'}</DialogTitle>
+          </DialogHeader>
+
+          {!refundTarget && (
+            <div className="space-y-3">
+              <form onSubmit={handleRefundSearch} className="flex gap-2">
+                <Input
+                  placeholder="Nombre o apellido del comprador"
+                  value={refundQuery}
+                  onChange={(e) => setRefundQuery(e.target.value)}
+                />
+                <Button type="submit" disabled={refundSearching}>
+                  <Search className="h-4 w-4" />
+                </Button>
+              </form>
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {refundResults.length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    {refundSearching ? 'Buscando…' : 'Buscá por nombre para encontrar la entrada.'}
+                  </p>
+                )}
+                {refundResults.map((r) => (
+                  <button
+                    key={r.id}
+                    onClick={() => handlePickRefundTarget(r)}
+                    className="w-full text-left text-sm border border-border rounded-md p-3 hover:border-gold/60 transition-colors"
+                  >
+                    <div className="flex justify-between">
+                      <span className="font-medium">{r.first_name} {r.last_name}</span>
+                      <span>{formatCurrency(r.total_amount)}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {r.seatLabels?.join(', ') || 'Entrada general'} ·{' '}
+                      {{ efectivo: 'Contado', transferencia: 'Transferencia', simulado: 'Otro', mercadopago: 'Mercado Pago' }[r.payment_method] ?? r.payment_method}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {refundTarget && (
+            <div className="space-y-3">
+              <p className="text-sm">
+                <span className="font-medium">{refundTarget.first_name} {refundTarget.last_name}</span> —{' '}
+                {refundTarget.seatLabels?.join(', ') || 'Entrada general'}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Le corresponde devolver <span className="text-foreground font-semibold">{formatCurrency(refundTarget.total_amount)}</span>.
+                Cargá cuánto le devolviste realmente (puede ser menos, si aplica algún descuento por la devolución).
+              </p>
+              <div className="space-y-2">
+                <Label>Monto que devolviste</Label>
+                <Input type="number" min="0" value={refundAmountInput} onChange={(e) => setRefundAmountInput(e.target.value)} />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            {refundTarget ? (
+              <>
+                <Button variant="outline" onClick={() => setRefundTarget(null)}>
+                  Volver a buscar
+                </Button>
+                <Button variant="destructive" onClick={handleConfirmRefund} disabled={refunding}>
+                  {refunding ? 'Procesando…' : 'Confirmar devolución'}
+                </Button>
+              </>
+            ) : (
+              <Button variant="outline" onClick={() => setRefundDialogOpen(false)}>
+                Cancelar
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -52,7 +52,7 @@ funcionalidad.
 | Archivo | Para qué sirve |
 |---|---|
 | `HomePage.jsx` | La cartelera pública (`/`): lista de eventos, con filtro por sala. Muestra la imagen de portada del evento si tiene alguna cargada. |
-| `EventDetailsPage.jsx` | Detalle de un evento (`/evento/:id`): galería de imágenes del evento, mapa de butacas interactivo (o selector de cantidad, si la sala es de entrada general), precios de referencia, sello de "Agotado" y aviso de venta cerrada, y una tarjeta chica de la sala siempre visible al costado. |
+| `EventDetailsPage.jsx` | Detalle de un evento (`/evento/:id`): título/descripción/fecha/sala a la izquierda (arriba en mobile) y galería de imágenes a la derecha; debajo, mapa de butacas interactivo (o selector de cantidad en salas de entrada general), selección, precios de referencia y sección de sponsors. Sello de "Agotado" y aviso de venta cerrada. |
 | `CheckoutPage.jsx` | Checkout (`/checkout/:id`): cuenta regresiva del hold, formulario del comprador, botón de pago que redirige a Mercado Pago. |
 | `PaymentResultPage.jsx` | Pantalla de vuelta de Mercado Pago (`/pago/resultado`): consulta el estado de la reserva hasta confirmar. |
 | `VenuesPage.jsx` | Listado público de salas (`/salas`): tarjetas con imagen de portada, dirección y capacidad. |
@@ -73,12 +73,12 @@ funcionalidad.
 |---|---|
 | `AdminLogin.jsx` | Formulario de login (usa Supabase Auth). |
 | `VenuesTab.jsx` | Lista de salas: crear, eliminar, entrar al editor de cada una. |
-| `VenueEditor.jsx` | El editor de una sala: datos básicos, **descripción**, **imágenes**, el toggle de **entrada general** (sin mapa de butacas), zonas de precio (con paleta de colores acotada), y la grilla de butacas (generar, pintar por zona, marcar pasillos, **mover butacas**). |
-| `EventsTab.jsx` | Lista de eventos: crear, **editar** (título/descripción/fecha — valida que no choque con otro evento de la misma sala —, y marcar **Agotado** a mano), **gestionar imágenes**, configurar precios (por zona, o un precio único si la sala es de entrada general) y publicar. |
-| `ImageManager.jsx` | Componente reutilizable de subida/borrado/reorden de imágenes, usado tanto por `EventsTab` como por `VenueEditor`. |
+| `VenueEditor.jsx` | El editor de una sala: datos básicos, **descripción**, **imágenes**, el toggle de **entrada general** (sin mapa de butacas), zonas de precio (con paleta de colores acotada), y la grilla de butacas (generar, pintar por zona, marcar pasillos, **mover butacas**, con la **letra de fila** visible al costado). |
+| `EventsTab.jsx` | Lista de eventos: crear, **editar** (título/descripción/fecha — valida que no choque con otro evento de la misma sala —, y marcar **Agotado** a mano), **gestionar imágenes**, **gestionar sponsors** (hasta 5, con etiqueta editable), configurar precios (por zona, o un precio único si la sala es de entrada general) y publicar. |
+| `ImageManager.jsx` | Componente reutilizable de subida/borrado/reorden de imágenes, usado por `EventsTab` (imágenes y sponsors) y `VenueEditor`. |
 | `ReservationsTab.jsx` | Planilla de reservas, filtrable por sala, evento y estado (las expiradas quedan ocultas por defecto), con botón para imprimir. |
-| `DoorSalesTab.jsx` | Venta en puerta: abrir/cerrar caja (con arqueo), elegir butacas en el mapa (o cantidad, en salas de entrada general), método de pago (contado/transferencia/otro), cargar comprador — muestra el QR de cada entrada vendida. Solo el contado cuenta para el arqueo de caja. |
-| `QrScannerTab.jsx` | Lector de QR por cámara (con `jsqr`) para marcar el ingreso; si el mismo QR se vuelve a leer, alerta y deja "Marcar salida" (para reingresar después) o "Cancelar ingreso" (si fue un error) — sin apuro: solo sigue escaneando cuando la persona toca "Siguiente". |
+| `DoorSalesTab.jsx` | Venta en puerta: abrir/cerrar caja (con arqueo), elegir butacas en el mapa (o cantidad, en salas de entrada general), método de pago (contado/transferencia/otro), cargar comprador, y **devolver entradas** (busca por nombre, libera la butaca, el cajero carga cuánto devolvió de verdad). Solo el contado cuenta para el arqueo. |
+| `QrScannerTab.jsx` | Lector de QR por cámara (con `jsqr`): al leer, muestra el dato **sin marcar el ingreso todavía** — hay que tocar "OK, dejar entrar" para confirmarlo. Si el mismo QR se vuelve a leer, alerta y deja "Marcar salida" o "Cancelar ingreso". Incluye el panel para **habilitar el ingreso** de cada evento (evita que alguien entre con el QR de otra función). |
 | `SiteSettingsTab.jsx` | Personalizar el sitio desde el admin: nombre, logo (subida de imagen) y colores — se aplican en todo el sitio al instante al guardar, sin tocar código ni redeployar. |
 | `DangerZoneTab.jsx` | Pestaña "Peligro": eliminar reservas expiradas, vaciar imágenes subidas, borrar todos los eventos / todas las salas / resetear la base completa — todas con confirmación escrita, y las que corresponde también vacían los archivos de Storage (no solo las filas). |
 | `LiveEntryBoard.jsx` | Pantalla en vivo para el día del evento: mapa de butacas vendidas + lista de ingresos en tiempo real, para la persona de boletería. |
@@ -133,6 +133,7 @@ probablemente el problema esté en uno de estos archivos.
 | `0006_door_sales_checkin_payments.sql` | Agrega la caja (`cash_shifts`, apertura/cierre con arqueo), el método de pago de cada reserva (Mercado Pago / efectivo / simulado), y el check-in por QR (`checked_in_at`, `check_in_reservation`). |
 | `0007_checkin_capacity_soldout.sql` | Check-in con estados adentro/salió/cancelar (con historial); una sala no puede tener dos eventos en la misma fecha y hora; corte de venta 30 min después de empezada la función; "Agotado" automático o manual; salas de entrada general (sin mapa de butacas). |
 | `0008_fixes_payments_settings.sql` | Fix del bug "seat_id is ambiguous" en `hold_seats`; método de pago "transferencia" en la venta en puerta; borrado de reservas expiradas; sync de capacidad para entrada general; tabla `site_settings` para personalizar el sitio desde el admin. |
+| `0009_sponsors_checkin_refunds.sql` | Sponsors por evento (`event_sponsors`); check-in en dos pasos (`lookup_reservation_checkin` / `confirm_reservation_checkin`); `events.checkin_enabled` para habilitar el ingreso solo al evento correspondiente; devolución de entradas (`refund_reservation`, ajusta `close_cash_shift`). |
 
 ### `supabase/functions/` — Edge Functions (código de servidor)
 
@@ -160,6 +161,9 @@ probablemente el problema esté en uno de estos archivos.
 - **"Quiero activar/desactivar los pagos simulados"** → `VITE_PAYMENT_MODE` en tu `.env` + el secret `PAYMENT_MODE` en Supabase (ver SETUP.md, Parte 2.5)
 - **"¿Cómo publico un cambio nuevo?"** → `./scripts/deploy.sh "mensaje"` (ver SETUP.md, Parte 7) — sube a GitHub, aplica migraciones en Supabase y redespliega las Edge Functions; Render se despliega solo
 - **"Quiero cambiar el nombre, el logo o los colores sin tocar código"** → Admin → pestaña "Personalizar sitio" — se aplica al instante, sin rebuild
+- **"Quiero agregar sponsors/auspiciantes a un evento"** → botón con ícono de maletín en la fila del evento, en la pestaña "Eventos" del admin
+- **"El lector de QR dice que el ingreso no está habilitado"** → activá el evento correspondiente en el panel "Habilitar ingreso al evento", arriba de la pestaña "Lector QR"
+- **"Necesito devolver una entrada vendida en puerta"** → pestaña "Venta en puerta" → botón "Devolver entrada" (busca por nombre, requiere caja abierta)
 - **"Quiero agregar un dato al formulario de compra"** → `src/pages/CheckoutPage.jsx` + `create_pending_reservation` en `0001_init.sql` (para guardarlo) + `create-payment-preference/index.ts` (si tiene que viajar a Mercado Pago)
 - **"Un botón del admin no hace lo que debería"** → buscá el componente en `src/components/admin/`
 - **"Quiero cambiar el footer (redes sociales, teléfono, email)"** → `src/site.config.js` (sección `footer`) — no hace falta tocar `Footer.jsx`
