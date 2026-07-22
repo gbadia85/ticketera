@@ -5,14 +5,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useEventSeats } from '@/hooks/useEventSeats';
 import { useEventCheckins } from '@/hooks/useEventCheckins';
 import SeatMap, { SeatMapLegend } from '@/components/SeatMap';
-import { listAllEvents } from '@/lib/api';
+import { listAllFunciones } from '@/lib/api';
+import { formatDateTime } from '@/lib/utils';
 
 const LiveEntryBoard = () => {
   const [events, setEvents] = useState([]);
   const [eventId, setEventId] = useState('');
 
   useEffect(() => {
-    listAllEvents().then((data) => setEvents(data.filter((e) => e.status === 'scheduled')));
+    listAllFunciones().then((data) => setEvents(data.filter((e) => e.status === 'scheduled')));
   }, []);
 
   const { seats } = useEventSeats(eventId || null);
@@ -66,7 +67,7 @@ const LiveEntryBoard = () => {
           <option value="">Elegí un evento…</option>
           {events.map((e) => (
             <option key={e.id} value={e.id}>
-              {e.title}
+              {e.shows?.title} — {formatDateTime(e.event_date)}
             </option>
           ))}
         </select>
@@ -145,7 +146,7 @@ const LiveEntryBoard = () => {
                           {r.entry_status === 'inside' ? 'Adentro' : 'Salió'}
                         </span>
                         <p className="text-xs text-muted-foreground whitespace-nowrap">
-                          {new Date(r.checked_in_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                          {new Date(r.checked_in_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' })}
                         </p>
                       </div>
                     </div>

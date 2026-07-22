@@ -200,6 +200,29 @@ Agrega:
 Corré **`supabase/migrations/0009_sponsors_checkin_refunds.sql`**
 completo en el SQL Editor.
 
+### 1.2.8 — Aplicar la migración 0010 (funciones: varios horarios por evento)
+
+Este es el cambio más grande de todos. Hasta ahora un "evento" era una
+sola fecha/hora. Esta migración separa el concepto en dos:
+
+- **El evento** (ahora vive en la tabla `shows`): título, descripción,
+  imágenes, sponsors, sala. No tiene fecha.
+- **Cada función** (sigue viviendo en `events`): una fecha/hora puntual
+  de ese evento. Es la unidad de venta — butacas, precios, reservas,
+  caja y check-in siguen funcionando exactamente igual que antes, por
+  función.
+
+Un evento puede tener una función (como hasta ahora) o varias (mismo
+espectáculo, distintos días u horarios). **La migración convierte cada
+evento que ya tenías cargado en un evento con una única función — no
+se pierde nada.**
+
+Corré **`supabase/migrations/0010_shows_and_funciones.sql`** completo
+en el SQL Editor. Es una migración de datos además de esquema (recorre
+tus eventos existentes uno por uno), así que si tenés muchísimos
+eventos cargados puede tardar un par de segundos más que las
+anteriores — es normal.
+
 ### 1.3 — (Opcional) Cargar datos de ejemplo
 
 Si querés una sala y un evento de prueba ya armados para no cargar todo
@@ -462,6 +485,7 @@ supabase migration repair --status applied 0006
 supabase migration repair --status applied 0007
 supabase migration repair --status applied 0008
 supabase migration repair --status applied 0009
+supabase migration repair --status applied 0010
 ```
 
 Verificá que quedó todo sincronizado:

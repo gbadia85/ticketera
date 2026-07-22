@@ -7,7 +7,7 @@ import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { getVenuePublic, listPublicEvents } from '@/lib/api';
+import { getVenuePublic, listPublicShows } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
 import { siteConfig } from '@/site.config';
 
@@ -17,17 +17,17 @@ const VenueDetailsPage = () => {
   const t = siteConfig.texts.venues;
 
   const [venue, setVenue] = useState(null);
-  const [events, setEvents] = useState([]);
+  const [shows, setShows] = useState([]);
   const [activeImage, setActiveImage] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
     setActiveImage(0);
-    Promise.all([getVenuePublic(venueId), listPublicEvents()])
-      .then(([venueData, allEvents]) => {
+    Promise.all([getVenuePublic(venueId), listPublicShows()])
+      .then(([venueData, allShows]) => {
         setVenue(venueData);
-        setEvents(allEvents.filter((e) => e.venues?.id === venueId));
+        setShows(allShows.filter((s) => s.venues?.id === venueId));
       })
       .finally(() => setLoading(false));
   }, [venueId]);
@@ -112,16 +112,17 @@ const VenueDetailsPage = () => {
                 <CardTitle>{t.upcomingEventsTitle}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                {events.length === 0 && <p className="text-sm text-muted-foreground">{t.noUpcomingEvents}</p>}
-                {events.map((event) => (
+                {shows.length === 0 && <p className="text-sm text-muted-foreground">{t.noUpcomingEvents}</p>}
+                {shows.map((show) => (
                   <Link
-                    key={event.id}
-                    to={`/evento/${event.id}`}
+                    key={show.id}
+                    to={`/evento/${show.id}`}
                     className="block rounded-md border border-border p-3 hover:border-gold/60 transition-colors"
                   >
-                    <p className="font-medium text-sm">{event.title}</p>
+                    <p className="font-medium text-sm">{show.title}</p>
                     <p className="flex items-center gap-1.5 text-xs text-muted-foreground mt-1">
-                      <CalendarDays className="h-3.5 w-3.5" /> {formatDateTime(event.event_date)}
+                      <CalendarDays className="h-3.5 w-3.5" /> {show.nextFuncion ? formatDateTime(show.nextFuncion.event_date) : '—'}
+                      {show.funciones.length > 1 && <span className="text-gold">+{show.funciones.length - 1} más</span>}
                     </p>
                   </Link>
                 ))}

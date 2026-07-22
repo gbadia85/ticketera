@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { CalendarDays, Image, Briefcase, MapPin, Pencil, Plus, Rocket, Trash2, XCircle } from 'lucide-react';
+import { CalendarDays, Image, Briefcase, MapPin, Pencil, Plus, Power, Rocket, Trash2, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -18,27 +18,30 @@ import { useToast } from '@/components/ui/use-toast';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
 import ImageManager from '@/components/admin/ImageManager';
 import {
-  addEventImage,
-  addEventSponsor,
-  createEvent,
-  deleteEvent,
-  deleteEventImage,
-  deleteEventSponsor,
+  addShowImage,
+  addShowSponsor,
+  createFuncion,
+  createShow,
+  deleteFuncion,
+  deleteShowImage,
+  deleteShowSponsor,
   ensureGeneralAdmissionSeats,
   getEventZonePrices,
-  listAllEvents,
-  listEventImages,
-  listEventSponsors,
+  listShowImages,
+  listShows,
+  listShowSponsors,
   listVenues,
   listZones,
   publishEvent,
-  reorderEventImage,
-  reorderEventSponsor,
+  reorderShowImage,
+  reorderShowSponsor,
   setEventZonePrices,
-  updateEvent,
+  updateFuncion,
+  updateShow,
 } from '@/lib/api';
 
-const MAX_EVENT_IMAGES = 5;
+const MAX_SHOW_IMAGES = 5;
+const MAX_SHOW_SPONSORS = 5;
 
 // Convierte un timestamp ISO (UTC) al formato que necesita un input
 // datetime-local (hora local del navegador, sin zona horaria).
@@ -58,28 +61,31 @@ const STATUS_LABELS = {
 
 const friendlyEventError = (err) => {
   if (err.message?.includes('venue_datetime_conflict')) {
-    return 'Esa sala ya tiene otro evento programado exactamente en esa misma fecha y hora.';
+    return 'Esa sala ya tiene otra función programada exactamente en esa misma fecha y hora.';
   }
   return err.message;
 };
 
 const EventsTab = () => {
   const { toast } = useToast();
-  const [events, setEvents] = useState([]);
+  const [shows, setShows] = useState([]);
   const [venues, setVenues] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState({ title: '', description: '', venue_id: '', event_date: '', sponsors_label: '' });
-  const [pricingEventId, setPricingEventId] = useState(null);
-  const [editingEvent, setEditingEvent] = useState(null);
-  const [imagesEvent, setImagesEvent] = useState(null);
-  const [sponsorsEvent, setSponsorsEvent] = useState(null);
+
+  const [pricingFuncion, setPricingFuncion] = useState(null); // { funcion, show }
+  const [editingFuncion, setEditingFuncion] = useState(null);
+  const [addingFuncionTo, setAddingFuncionTo] = useState(null); // show
+  const [editingShow, setEditingShow] = useState(null);
+  const [imagesShow, setImagesShow] = useState(null);
+  const [sponsorsShow, setSponsorsShow] = useState(null);
 
   const reload = () => {
     setLoading(true);
-    Promise.all([listAllEvents(), listVenues()])
-      .then(([e, v]) => {
-        setEvents(e);
+    Promise.all([listShows(), listVenues()])
+      .then(([s, v]) => {
+        setShows(s);
         setVenues(v);
       })
       .finally(() => setLoading(false));
@@ -90,43 +96,48 @@ const EventsTab = () => {
   const handleCreate = async (e) => {
     e.preventDefault();
     try {
-      const event = await createEvent({
+      const show = await createShow({
         title: form.title,
         description: form.description || null,
         venue_id: form.venue_id,
-        event_date: new Date(form.event_date).toISOString(),
         sponsors_label: form.sponsors_label || null,
-        status: 'draft',
+      });
+      const funcion = await createFuncion({
+        showId: show.id,
+        venueId: form.venue_id,
+        eventDate: new Date(form.event_date).toISOString(),
       });
       setDialogOpen(false);
       setForm({ title: '', description: '', venue_id: '', event_date: '', sponsors_label: '' });
       reload();
-      setPricingEventId(event.id);
+      setPricingFuncion({ funcion, show });
     } catch (err) {
       toast({ title: 'No pudimos crear el evento', description: friendlyEventError(err), variant: 'destructive' });
     }
   };
 
-  const handleCancel = async (id) => {
-    if (!confirm('¿Cancelar este evento? Ya no será visible al público.')) return;
-    await updateEvent(id, { status: 'cancelled' });
+  const handleCancelFuncion = async (id) => {
+    if (!confirm('¿Cancelar esta función? Ya no será visible al público.')) return;
+    await updateFuncion(id, { status: 'cancelled' });
     reload();
   };
 
-  const handleDelete = async (id) => {
-    if (!confirm('¿Eliminar este borrador de evento?')) return;
+  const handleDeleteFuncion = async (id) => {
+    if (!confirm('¿Eliminar esta función?')) return;
     try {
-      await deleteEvent(id);
+      await deleteFuncion(id);
       reload();
     } catch (err) {
-      toast({ title: 'No pudimos eliminar el evento', description: err.message, variant: 'destructive' });
+      toast({ title: 'No pudimos eliminar la función', description: err.message, variant: 'destructive' });
     }
   };
 
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <p className="text-muted-foreground text-sm">Creá funciones, asignales una sala y publicalas para venderlas.</p>
+        <p className="text-muted-foreground text-sm">
+          Creá un evento con su primera función, después podés agregarle más funciones (otros días u horarios).
+        </p>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
             <Button>
@@ -163,15 +174,20 @@ const EventsTab = () => {
                     </option>
                   ))}
                 </select>
+                <p className="text-xs text-muted-foreground">
+                  La sala queda fija para este evento y todas sus funciones — si necesitás otra sala, creá un evento
+                  nuevo.
+                </p>
               </div>
               <div className="space-y-2">
-                <Label>Fecha y hora</Label>
+                <Label>Fecha y hora de la primera función</Label>
                 <Input
                   type="datetime-local"
                   value={form.event_date}
                   onChange={(e) => setForm({ ...form, event_date: e.target.value })}
                   required
                 />
+                <p className="text-xs text-muted-foreground">Después podés agregarle más funciones desde su fila en la lista.</p>
               </div>
               <div className="space-y-2">
                 <Label>Etiqueta de sponsors (opcional)</Label>
@@ -180,9 +196,6 @@ const EventsTab = () => {
                   onChange={(e) => setForm({ ...form, sponsors_label: e.target.value })}
                   placeholder='Ej: "Sponsors", "Auspiciantes", "Con el apoyo de"'
                 />
-                <p className="text-xs text-muted-foreground">
-                  Las imágenes de sponsors se cargan después de crear el evento, desde su fila en la lista.
-                </p>
               </div>
               <DialogFooter>
                 <Button type="submit">Crear evento</Button>
@@ -195,90 +208,320 @@ const EventsTab = () => {
       {loading && <p className="text-muted-foreground text-sm">Cargando eventos…</p>}
 
       <div className="space-y-4">
-        {events.map((event) => (
-          <Card key={event.id}>
-            <CardContent className="p-5 flex flex-col md:flex-row md:items-center gap-4 justify-between">
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <h3 className="font-display text-lg">{event.title}</h3>
-                  <Badge variant={STATUS_LABELS[event.status]?.variant}>{STATUS_LABELS[event.status]?.label}</Badge>
-                  {event.sold_out_status?.is_sold_out && <Badge variant="destructive">Agotado</Badge>}
+        {shows.map((show) => (
+          <Card key={show.id}>
+            <CardContent className="p-5 space-y-4">
+              <div className="flex flex-col md:flex-row md:items-start gap-4 justify-between">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-display text-lg">{show.title}</h3>
+                    <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                      <MapPin className="h-3.5 w-3.5" /> {show.venues?.name}
+                    </span>
+                  </div>
+                  {show.description && <p className="text-sm text-muted-foreground max-w-xl">{show.description}</p>}
                 </div>
-                <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-                  <span className="flex items-center gap-1.5">
-                    <CalendarDays className="h-3.5 w-3.5" /> {formatDateTime(event.event_date)}
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <MapPin className="h-3.5 w-3.5" /> {event.venues?.name}
-                  </span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button onClick={() => setImagesShow(show)} className="text-muted-foreground hover:text-gold p-2" title="Imágenes">
+                    <Image className="h-4 w-4" />
+                  </button>
+                  <button onClick={() => setSponsorsShow(show)} className="text-muted-foreground hover:text-gold p-2" title="Sponsors">
+                    <Briefcase className="h-4 w-4" />
+                  </button>
+                  <button onClick={() => setEditingShow(show)} className="text-muted-foreground hover:text-gold p-2" title="Editar evento">
+                    <Pencil className="h-4 w-4" />
+                  </button>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <button onClick={() => setImagesEvent(event)} className="text-muted-foreground hover:text-gold p-2" title="Imágenes">
-                  <Image className="h-4 w-4" />
+
+              <div className="space-y-2 pl-1 border-l-2 border-border ml-1">
+                {show.events.map((funcion) => (
+                  <div key={funcion.id} className="flex flex-col md:flex-row md:items-center gap-2 justify-between pl-4 py-1">
+                    <div className="flex items-center gap-2 flex-wrap text-sm">
+                      <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
+                      {formatDateTime(funcion.event_date)}
+                      <Badge variant={STATUS_LABELS[funcion.status]?.variant}>{STATUS_LABELS[funcion.status]?.label}</Badge>
+                      {funcion.sold_out_status?.is_sold_out && <Badge variant="destructive">Agotado</Badge>}
+                      {funcion.checkin_enabled && (
+                        <span className="flex items-center gap-1 text-xs text-gold" title="Ingreso habilitado">
+                          <Power className="h-3 w-3" /> Ingreso habilitado
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setEditingFuncion({ funcion, show })}
+                        className="text-muted-foreground hover:text-gold p-2"
+                        title="Editar función"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      {funcion.status === 'draft' && (
+                        <>
+                          <Button size="sm" onClick={() => setPricingFuncion({ funcion, show })}>
+                            <Rocket className="h-4 w-4 mr-2" /> Configurar precios y publicar
+                          </Button>
+                          <button onClick={() => handleDeleteFuncion(funcion.id)} className="text-muted-foreground hover:text-destructive p-2">
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </>
+                      )}
+                      {funcion.status === 'scheduled' && (
+                        <Button size="sm" variant="outline" onClick={() => handleCancelFuncion(funcion.id)}>
+                          <XCircle className="h-4 w-4 mr-2" /> Cancelar
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                <button
+                  onClick={() => setAddingFuncionTo(show)}
+                  className="pl-4 text-xs text-gold hover:underline flex items-center gap-1"
+                >
+                  <Plus className="h-3 w-3" /> Agregar función (otro día u horario)
                 </button>
-                <button onClick={() => setSponsorsEvent(event)} className="text-muted-foreground hover:text-gold p-2" title="Sponsors">
-                  <Briefcase className="h-4 w-4" />
-                </button>
-                <button onClick={() => setEditingEvent(event)} className="text-muted-foreground hover:text-gold p-2" title="Editar">
-                  <Pencil className="h-4 w-4" />
-                </button>
-                {event.status === 'draft' && (
-                  <>
-                    <Button size="sm" onClick={() => setPricingEventId(event.id)}>
-                      <Rocket className="h-4 w-4 mr-2" /> Configurar precios y publicar
-                    </Button>
-                    <button onClick={() => handleDelete(event.id)} className="text-muted-foreground hover:text-destructive p-2">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </>
-                )}
-                {event.status === 'scheduled' && (
-                  <Button size="sm" variant="outline" onClick={() => handleCancel(event.id)}>
-                    <XCircle className="h-4 w-4 mr-2" /> Cancelar
-                  </Button>
-                )}
               </div>
             </CardContent>
           </Card>
         ))}
       </div>
 
-      {pricingEventId && (
+      {pricingFuncion && (
         <EventPricingDialog
-          eventId={pricingEventId}
+          funcion={pricingFuncion.funcion}
+          show={pricingFuncion.show}
           onClose={() => {
-            setPricingEventId(null);
+            setPricingFuncion(null);
             reload();
           }}
         />
       )}
 
-      {editingEvent && (
-        <EditEventDialog
-          event={editingEvent}
-          venues={venues}
-          onClose={() => setEditingEvent(null)}
+      {editingFuncion && (
+        <EditFuncionDialog
+          funcion={editingFuncion.funcion}
+          show={editingFuncion.show}
+          onClose={() => setEditingFuncion(null)}
           onSaved={() => {
-            setEditingEvent(null);
+            setEditingFuncion(null);
             reload();
           }}
         />
       )}
 
-      {imagesEvent && <EventImagesDialog event={imagesEvent} onClose={() => setImagesEvent(null)} />}
-      {sponsorsEvent && <EventSponsorsDialog event={sponsorsEvent} onClose={() => setSponsorsEvent(null)} />}
+      {addingFuncionTo && (
+        <AddFuncionDialog
+          show={addingFuncionTo}
+          onClose={() => setAddingFuncionTo(null)}
+          onCreated={(funcion) => {
+            setAddingFuncionTo(null);
+            reload();
+            setPricingFuncion({ funcion, show: addingFuncionTo });
+          }}
+        />
+      )}
+
+      {editingShow && (
+        <EditShowDialog
+          show={editingShow}
+          onClose={() => setEditingShow(null)}
+          onSaved={() => {
+            setEditingShow(null);
+            reload();
+          }}
+        />
+      )}
+
+      {imagesShow && <ShowImagesDialog show={imagesShow} onClose={() => setImagesShow(null)} />}
+      {sponsorsShow && <ShowSponsorsDialog show={sponsorsShow} onClose={() => setSponsorsShow(null)} />}
     </div>
   );
 };
 
-const EventImagesDialog = ({ event, onClose }) => {
+const AddFuncionDialog = ({ show, onClose, onCreated }) => {
+  const { toast } = useToast();
+  const [eventDate, setEventDate] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const funcion = await createFuncion({
+        showId: show.id,
+        venueId: show.venue_id,
+        eventDate: new Date(eventDate).toISOString(),
+      });
+      toast({ title: 'Función agregada' });
+      onCreated(funcion);
+    } catch (err) {
+      toast({ title: 'No pudimos agregar la función', description: friendlyEventError(err), variant: 'destructive' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Nueva función de "{show.title}"</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label>Fecha y hora</Label>
+            <Input type="datetime-local" value={eventDate} onChange={(e) => setEventDate(e.target.value)} required />
+            <p className="text-xs text-muted-foreground">
+              Se valida sola que la sala esté libre en ese horario.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button type="submit" disabled={saving}>
+              {saving ? 'Agregando…' : 'Agregar función'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+const EditFuncionDialog = ({ funcion, show, onClose, onSaved }) => {
+  const { toast } = useToast();
+  const [form, setForm] = useState({
+    event_date: toDatetimeLocalValue(funcion.event_date),
+    manually_sold_out: funcion.manually_sold_out ?? false,
+  });
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await updateFuncion(funcion.id, {
+        event_date: new Date(form.event_date).toISOString(),
+        manually_sold_out: form.manually_sold_out,
+      });
+      toast({ title: 'Función actualizada' });
+      onSaved();
+    } catch (err) {
+      toast({ title: 'No pudimos guardar los cambios', description: friendlyEventError(err), variant: 'destructive' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Editar función de "{show.title}"</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label>Fecha y hora</Label>
+            <Input
+              type="datetime-local"
+              value={form.event_date}
+              onChange={(e) => setForm({ ...form, event_date: e.target.value })}
+              required
+            />
+            <p className="text-xs text-muted-foreground">
+              La venta de entradas se corta automáticamente 30 minutos después de esta hora.
+            </p>
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={form.manually_sold_out}
+              onChange={(e) => setForm({ ...form, manually_sold_out: e.target.checked })}
+              className="h-4 w-4 rounded border-input"
+            />
+            Marcar como agotado manualmente
+          </label>
+          <DialogFooter>
+            <Button type="submit" disabled={saving}>
+              {saving ? 'Guardando…' : 'Guardar cambios'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+const EditShowDialog = ({ show, onClose, onSaved }) => {
+  const { toast } = useToast();
+  const [form, setForm] = useState({
+    title: show.title,
+    description: show.description ?? '',
+    sponsors_label: show.sponsors_label ?? '',
+  });
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await updateShow(show.id, {
+        title: form.title,
+        description: form.description || null,
+        sponsors_label: form.sponsors_label || null,
+      });
+      toast({ title: 'Evento actualizado' });
+      onSaved();
+    } catch (err) {
+      toast({ title: 'No pudimos guardar los cambios', description: err.message, variant: 'destructive' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Editar evento</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label>Título de la obra / evento</Label>
+            <Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required />
+          </div>
+          <div className="space-y-2">
+            <Label>Descripción (opcional)</Label>
+            <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Sala: <strong className="text-foreground">{show.venues?.name}</strong> — para cambiarla, creá un evento
+            nuevo.
+          </p>
+          <div className="space-y-2">
+            <Label>Etiqueta de sponsors (opcional)</Label>
+            <Input
+              value={form.sponsors_label}
+              onChange={(e) => setForm({ ...form, sponsors_label: e.target.value })}
+              placeholder='Ej: "Sponsors", "Auspiciantes"'
+            />
+          </div>
+          <DialogFooter>
+            <Button type="submit" disabled={saving}>
+              {saving ? 'Guardando…' : 'Guardar cambios'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+const ShowImagesDialog = ({ show, onClose }) => {
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const reload = () => {
     setLoading(true);
-    listEventImages(event.id)
+    listShowImages(show.id)
       .then(setImages)
       .finally(() => setLoading(false));
   };
@@ -287,17 +530,17 @@ const EventImagesDialog = ({ event, onClose }) => {
 
   const handleUpload = async (file) => {
     const nextSortOrder = images.length > 0 ? Math.max(...images.map((i) => i.sort_order)) + 1 : 0;
-    const created = await addEventImage(event.id, file, nextSortOrder);
+    const created = await addShowImage(show.id, file, nextSortOrder);
     setImages([...images, created]);
   };
 
   const handleDelete = async (image) => {
-    await deleteEventImage(image);
+    await deleteShowImage(image);
     setImages(images.filter((i) => i.id !== image.id));
   };
 
   const handleReorder = async (imageA, imageB) => {
-    await reorderEventImage(imageA, imageB);
+    await reorderShowImage(imageA, imageB);
     setImages(
       images
         .map((i) => {
@@ -313,18 +556,18 @@ const EventImagesDialog = ({ event, onClose }) => {
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Imágenes de "{event.title}"</DialogTitle>
+          <DialogTitle>Imágenes de "{show.title}"</DialogTitle>
         </DialogHeader>
         <p className="text-sm text-muted-foreground -mt-2">
           La primera imagen es la que se muestra como portada en la cartelera. Si no subís ninguna, se muestra el
-          ícono por defecto.
+          ícono por defecto. Se comparten entre todas las funciones de este evento.
         </p>
         {loading ? (
           <p className="text-sm text-muted-foreground">Cargando imágenes…</p>
         ) : (
           <ImageManager
             images={images}
-            maxImages={MAX_EVENT_IMAGES}
+            maxImages={MAX_SHOW_IMAGES}
             onUpload={handleUpload}
             onDelete={handleDelete}
             onReorder={handleReorder}
@@ -340,15 +583,13 @@ const EventImagesDialog = ({ event, onClose }) => {
   );
 };
 
-const MAX_EVENT_SPONSORS = 5;
-
-const EventSponsorsDialog = ({ event, onClose }) => {
+const ShowSponsorsDialog = ({ show, onClose }) => {
   const [sponsors, setSponsors] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const reload = () => {
     setLoading(true);
-    listEventSponsors(event.id)
+    listShowSponsors(show.id)
       .then(setSponsors)
       .finally(() => setLoading(false));
   };
@@ -357,17 +598,17 @@ const EventSponsorsDialog = ({ event, onClose }) => {
 
   const handleUpload = async (file) => {
     const nextSortOrder = sponsors.length > 0 ? Math.max(...sponsors.map((s) => s.sort_order)) + 1 : 0;
-    const created = await addEventSponsor(event.id, file, nextSortOrder);
+    const created = await addShowSponsor(show.id, file, nextSortOrder);
     setSponsors([...sponsors, created]);
   };
 
   const handleDelete = async (sponsor) => {
-    await deleteEventSponsor(sponsor);
+    await deleteShowSponsor(sponsor);
     setSponsors(sponsors.filter((s) => s.id !== sponsor.id));
   };
 
   const handleReorder = async (a, b) => {
-    await reorderEventSponsor(a, b);
+    await reorderShowSponsor(a, b);
     setSponsors(
       sponsors
         .map((s) => {
@@ -383,18 +624,18 @@ const EventSponsorsDialog = ({ event, onClose }) => {
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Sponsors de "{event.title}"</DialogTitle>
+          <DialogTitle>Sponsors de "{show.title}"</DialogTitle>
         </DialogHeader>
         <p className="text-sm text-muted-foreground -mt-2">
-          Se muestran en una sección aparte al entrar al evento, bajo la etiqueta "
-          {event.sponsors_label || 'Sponsors'}" (editable desde "Editar evento").
+          Se muestran en una sección aparte al entrar al evento, bajo la etiqueta "{show.sponsors_label || 'Sponsors'}"
+          (editable desde "Editar evento").
         </p>
         {loading ? (
           <p className="text-sm text-muted-foreground">Cargando…</p>
         ) : (
           <ImageManager
             images={sponsors}
-            maxImages={MAX_EVENT_SPONSORS}
+            maxImages={MAX_SHOW_SPONSORS}
             onUpload={handleUpload}
             onDelete={handleDelete}
             onReorder={handleReorder}
@@ -411,25 +652,20 @@ const EventSponsorsDialog = ({ event, onClose }) => {
   );
 };
 
-const EventPricingDialog = ({ eventId, onClose }) => {
+const EventPricingDialog = ({ funcion, show, onClose }) => {
   const { toast } = useToast();
-  const [venue, setVenue] = useState(null);
   const [zones, setZones] = useState([]);
   const [prices, setPrices] = useState({});
   const [generalPrice, setGeneralPrice] = useState('');
   const [loading, setLoading] = useState(true);
   const [publishing, setPublishing] = useState(false);
 
+  const venue = show.venues;
+
   useEffect(() => {
     (async () => {
-      const [allEvents, allVenues] = await Promise.all([listAllEvents(), listVenues()]);
-      const current = allEvents.find((e) => e.id === eventId);
-      if (!current) return;
-      const currentVenue = allVenues.find((v) => v.id === current.venue_id);
-      setVenue(currentVenue);
-
-      if (!currentVenue?.general_admission) {
-        const [zonesData, overrides] = await Promise.all([listZones(current.venue_id), getEventZonePrices(eventId)]);
+      if (!venue?.general_admission) {
+        const [zonesData, overrides] = await Promise.all([listZones(venue.id), getEventZonePrices(funcion.id)]);
         setZones(zonesData);
         const priceMap = {};
         zonesData.forEach((z) => {
@@ -440,7 +676,7 @@ const EventPricingDialog = ({ eventId, onClose }) => {
       }
       setLoading(false);
     })();
-  }, [eventId]);
+  }, [funcion.id, venue]);
 
   const handlePublish = async () => {
     setPublishing(true);
@@ -449,15 +685,15 @@ const EventPricingDialog = ({ eventId, onClose }) => {
         await ensureGeneralAdmissionSeats(venue.id, Number(generalPrice) || 0);
       } else {
         await setEventZonePrices(
-          eventId,
+          funcion.id,
           Object.entries(prices).map(([zone_id, price]) => ({ zone_id, price: Number(price) }))
         );
       }
-      await publishEvent(eventId);
-      toast({ title: 'Evento publicado', description: 'Ya está visible en la cartelera.' });
+      await publishEvent(funcion.id);
+      toast({ title: 'Función publicada', description: 'Ya está visible en la cartelera.' });
       onClose();
     } catch (err) {
-      toast({ title: 'No pudimos publicar el evento', description: err.message, variant: 'destructive' });
+      toast({ title: 'No pudimos publicar la función', description: err.message, variant: 'destructive' });
     } finally {
       setPublishing(false);
     }
@@ -469,7 +705,10 @@ const EventPricingDialog = ({ eventId, onClose }) => {
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{venue?.general_admission ? 'Precio de entrada general' : 'Precios por zona'}</DialogTitle>
+          <DialogTitle>
+            {venue?.general_admission ? 'Precio de entrada general' : 'Precios por zona'} — {show.title} (
+            {formatDateTime(funcion.event_date)})
+          </DialogTitle>
         </DialogHeader>
         {loading && <p className="text-sm text-muted-foreground">Cargando datos de la sala…</p>}
 
@@ -510,122 +749,9 @@ const EventPricingDialog = ({ eventId, onClose }) => {
         )}
         <DialogFooter>
           <Button onClick={handlePublish} disabled={loading || publishing || !canPublish}>
-            {publishing ? 'Publicando…' : 'Publicar evento'}
+            {publishing ? 'Publicando…' : 'Publicar función'}
           </Button>
         </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-};
-
-const EditEventDialog = ({ event, venues, onClose, onSaved }) => {
-  const { toast } = useToast();
-  const [form, setForm] = useState({
-    title: event.title,
-    description: event.description ?? '',
-    venue_id: event.venue_id,
-    event_date: toDatetimeLocalValue(event.event_date),
-    manually_sold_out: event.manually_sold_out ?? false,
-    sponsors_label: event.sponsors_label ?? '',
-  });
-  const [saving, setSaving] = useState(false);
-
-  const canChangeVenue = event.status === 'draft';
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    try {
-      const patch = {
-        title: form.title,
-        description: form.description || null,
-        event_date: new Date(form.event_date).toISOString(),
-        manually_sold_out: form.manually_sold_out,
-        sponsors_label: form.sponsors_label || null,
-      };
-      if (canChangeVenue) patch.venue_id = form.venue_id;
-      await updateEvent(event.id, patch);
-      toast({ title: 'Evento actualizado' });
-      onSaved();
-    } catch (err) {
-      toast({ title: 'No pudimos guardar los cambios', description: friendlyEventError(err), variant: 'destructive' });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Editar evento</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label>Título de la obra / evento</Label>
-            <Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required />
-          </div>
-          <div className="space-y-2">
-            <Label>Descripción (opcional)</Label>
-            <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-          </div>
-          <div className="space-y-2">
-            <Label>Sala</Label>
-            <select
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:opacity-50"
-              value={form.venue_id}
-              onChange={(e) => setForm({ ...form, venue_id: e.target.value })}
-              disabled={!canChangeVenue}
-              required
-            >
-              {venues.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.name}
-                </option>
-              ))}
-            </select>
-            {!canChangeVenue && (
-              <p className="text-xs text-muted-foreground">
-                Este evento ya está publicado, así que su mapa de butacas ya se generó a partir de esta sala. Para
-                cambiarlo de sala, creá un evento nuevo.
-              </p>
-            )}
-          </div>
-          <div className="space-y-2">
-            <Label>Fecha y hora</Label>
-            <Input
-              type="datetime-local"
-              value={form.event_date}
-              onChange={(e) => setForm({ ...form, event_date: e.target.value })}
-              required
-            />
-            <p className="text-xs text-muted-foreground">
-              La venta de entradas se corta automáticamente 30 minutos después de esta hora.
-            </p>
-          </div>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={form.manually_sold_out}
-              onChange={(e) => setForm({ ...form, manually_sold_out: e.target.checked })}
-              className="h-4 w-4 rounded border-input"
-            />
-            Marcar como agotado manualmente
-          </label>
-          <div className="space-y-2">
-            <Label>Etiqueta de sponsors (opcional)</Label>
-            <Input
-              value={form.sponsors_label}
-              onChange={(e) => setForm({ ...form, sponsors_label: e.target.value })}
-              placeholder='Ej: "Sponsors", "Auspiciantes"'
-            />
-          </div>
-          <DialogFooter>
-            <Button type="submit" disabled={saving}>
-              {saving ? 'Guardando…' : 'Guardar cambios'}
-            </Button>
-          </DialogFooter>
-        </form>
       </DialogContent>
     </Dialog>
   );

@@ -106,7 +106,9 @@ export async function deleteSeatsByVenue(venueId) {
 }
 
 // ---------------------------------------------------------------------
-// Eventos
+// Shows (el espectáculo: título, descripción, imágenes, sponsors) y
+// funciones (cada fecha/hora puntual — es la unidad de venta: butacas,
+// precios, reservas, caja y check-in siguen viviendo acá, sin cambios).
 // ---------------------------------------------------------------------
 async function attachSoldOutStatus(events) {
   if (events.length === 0) return events;
@@ -122,73 +124,161 @@ async function attachSoldOutStatus(events) {
   return events.map((e) => ({ ...e, sold_out_status: byId.get(e.id) ?? null }));
 }
 
-export async function listPublicEvents() {
+const SALES_CUTOFF_MS = 30 * 60 * 1000;
+export const isFuncionSalesClosed = (funcion) => Date.now() > new Date(funcion.event_date).getTime() + SALES_CUTOFF_MS;
+
+/** Cartelera pública: shows con al menos una función todavía visible
+ * (no vencida hace más de 24hs), cada uno con sus funciones ordenadas
+ * por fecha y su propio estado de disponibilidad. */
+export async function listPublicShows() {
+  const visibleSince = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const { data, error } = await supabase
-    .from('events')
+    .from('shows')
     .select(
-      '*, venues ( id, name, address, capacity, general_admission ), event_images ( id, url, path, sort_order )'
+      '*, venues ( id, name, address, capacity, general_admission ), event_images ( id, url, path, sort_order ), events!inner ( * )'
     )
-    .eq('status', 'scheduled')
-    .order('event_date');
+    .eq('events.status', 'scheduled')
+    .gte('events.event_date', visibleSince)
+    .order('title');
   if (error) throw error;
-  return attachSoldOutStatus(data.map((e) => ({ ...e, event_images: sortImages(e.event_images) })));
+
+  const allFunciones = await attachSoldOutStatus(data.flatMap((s) => s.events ?? []));
+  const statusById = new Map(allFunciones.map((f) => [f.id, f.sold_out_status]));
+
+  return data.map((show) => {
+    const funciones = (show.events ?? [])
+      .map((f) => ({ ...f, sold_out_status: statusById.get(f.id) ?? null }))
+      .sort((a, b) => new Date(a.event_date) - new Date(b.event_date));
+    // Tarjeta de la cartelera: mostramos la primera función que todavía
+    // no cerró venta; si ya cerraron todas (pero siguen en la ventana
+    // de 24hs), mostramos la última, marcada como "pasada".
+    const nextFuncion = funciones.find((f) => !isFuncionSalesClosed(f)) ?? funciones[funciones.length - 1];
+    return {
+      ...show,
+      event_images: sortImages(show.event_images),
+      funciones,
+      nextFuncion,
+      isPast: nextFuncion ? isFuncionSalesClosed(nextFuncion) : false,
+      isSoldOut: funciones.every((f) => f.sold_out_status?.is_sold_out),
+    };
+  });
 }
 
-export async function listEventsByVenue(venueId) {
-  const { data, error } = await supabase.from('events').select('id, title, status').eq('venue_id', venueId);
+/** Una función puntual, con el título del show y la sala — para el checkout. */
+export async function getFuncion(eventId) {
+  const { data, error } = await supabase
+    .from('events')
+    .select('*, shows ( title, sponsors_label ), venues ( id, name, address, capacity, general_admission )')
+    .eq('id', eventId)
+    .single();
   if (error) throw error;
   return data;
 }
 
-export async function listAllEvents() {
+/** Todas las funciones (para los selectores del admin: venta en
+ * puerta, pantalla en vivo, filtro de reservas), con el título del
+ * show ya incluido. */
+export async function listAllFunciones() {
   const { data, error } = await supabase
     .from('events')
-    .select(
-      '*, venues ( id, name, address, capacity, general_admission ), event_images ( id, url, path, sort_order )'
-    )
+    .select('*, shows ( title, sponsors_label ), venues ( id, name, address, capacity, general_admission )')
     .order('event_date', { ascending: false });
   if (error) throw error;
-  return attachSoldOutStatus(data.map((e) => ({ ...e, event_images: sortImages(e.event_images) })));
+  return attachSoldOutStatus(data);
 }
 
-export async function getEvent(eventId) {
+/** Todos los shows con sus funciones, para el admin de eventos. */
+export async function listShows() {
   const { data, error } = await supabase
-    .from('events')
+    .from('shows')
     .select(
-      '*, venues ( *, venue_images ( id, url, path, sort_order ) ), event_images ( id, url, path, sort_order ), event_sponsors ( id, url, path, sort_order )'
+      '*, venues ( id, name, address, capacity, general_admission ), event_images ( id, url, path, sort_order ), event_sponsors ( id, url, path, sort_order ), events ( * )'
     )
-    .eq('id', eventId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+
+  const allFunciones = await attachSoldOutStatus(data.flatMap((s) => s.events ?? []));
+  const statusById = new Map(allFunciones.map((f) => [f.id, f.sold_out_status]));
+
+  return data.map((show) => ({
+    ...show,
+    event_images: sortImages(show.event_images),
+    event_sponsors: sortImages(show.event_sponsors),
+    events: (show.events ?? [])
+      .map((f) => ({ ...f, sold_out_status: statusById.get(f.id) ?? null }))
+      .sort((a, b) => new Date(a.event_date) - new Date(b.event_date)),
+  }));
+}
+
+/** Un show puntual con todas sus funciones (para la página de compra). */
+export async function getShow(showId) {
+  const { data, error } = await supabase
+    .from('shows')
+    .select(
+      '*, venues ( *, venue_images ( id, url, path, sort_order ) ), event_images ( id, url, path, sort_order ), event_sponsors ( id, url, path, sort_order ), events ( * )'
+    )
+    .eq('id', showId)
     .single();
   if (error) throw error;
-  const { data: soldOutStatus } = await supabase
-    .from('event_sold_out_status')
-    .select('*')
-    .eq('event_id', eventId)
-    .maybeSingle();
+
+  const funciones = (await attachSoldOutStatus(data.events ?? [])).sort(
+    (a, b) => new Date(a.event_date) - new Date(b.event_date)
+  );
+
   return {
     ...data,
     event_images: sortImages(data.event_images),
     event_sponsors: sortImages(data.event_sponsors),
     venues: data.venues ? { ...data.venues, venue_images: sortImages(data.venues.venue_images) } : data.venues,
-    sold_out_status: soldOutStatus ?? null,
+    funciones,
   };
 }
 
-export async function createEvent(event) {
-  const { data, error } = await supabase.from('events').insert(event).select().single();
+export async function createShow(show) {
+  const { data, error } = await supabase.from('shows').insert(show).select().single();
   if (error) throw error;
   return data;
 }
 
-export async function updateEvent(id, patch) {
+export async function updateShow(id, patch) {
+  const { data, error } = await supabase.from('shows').update(patch).eq('id', id).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteShow(id) {
+  const { error } = await supabase.from('shows').delete().eq('id', id);
+  if (error) throw error;
+}
+
+/** Agrega una función (fecha/hora) nueva a un show existente — la sala
+ * es siempre la del show, el chequeo de "sala libre" corre solo (es un
+ * trigger en la base). */
+export async function createFuncion({ showId, venueId, eventDate }) {
+  const { data, error } = await supabase
+    .from('events')
+    .insert({ show_id: showId, venue_id: venueId, event_date: eventDate, status: 'draft' })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateFuncion(id, patch) {
   const { data, error } = await supabase.from('events').update(patch).eq('id', id).select().single();
   if (error) throw error;
   return data;
 }
 
-export async function deleteEvent(id) {
+export async function deleteFuncion(id) {
   const { error } = await supabase.from('events').delete().eq('id', id);
   if (error) throw error;
+}
+
+export async function listEventsByVenue(venueId) {
+  const { data, error } = await supabase.from('events').select('id, status').eq('venue_id', venueId);
+  if (error) throw error;
+  return data;
 }
 
 export async function setEventZonePrices(eventId, zonePrices) {
@@ -242,7 +332,7 @@ export async function listReservations({ eventId, venueId } = {}) {
   let query = supabase
     .from('reservations')
     .select(
-      '*, events!inner ( title, venue_id, event_date, venues ( id, name ) ), reservation_seats ( price, event_seats ( seats ( label ) ) )'
+      '*, events!inner ( event_date, venue_id, shows ( title ), venues ( id, name ) ), reservation_seats ( price, event_seats ( seats ( label ) ) )'
     )
     .order('created_at', { ascending: false });
   if (eventId) query = query.eq('event_id', eventId);
@@ -295,21 +385,21 @@ async function deleteImageFile(bucket, path) {
 }
 
 // --- Imágenes de evento (máx. 5, se recomienda controlarlo desde la UI) ---
-export async function listEventImages(eventId) {
+export async function listShowImages(showId) {
   const { data, error } = await supabase
     .from('event_images')
     .select('*')
-    .eq('event_id', eventId)
+    .eq('show_id', showId)
     .order('sort_order');
   if (error) throw error;
   return data;
 }
 
-export async function addEventImage(eventId, file, nextSortOrder) {
-  const { url, path } = await uploadImageFile('event-images', eventId, file);
+export async function addShowImage(showId, file, nextSortOrder) {
+  const { url, path } = await uploadImageFile('event-images', showId, file);
   const { data, error } = await supabase
     .from('event_images')
-    .insert({ event_id: eventId, url, path, sort_order: nextSortOrder })
+    .insert({ show_id: showId, url, path, sort_order: nextSortOrder })
     .select()
     .single();
   if (error) {
@@ -319,13 +409,13 @@ export async function addEventImage(eventId, file, nextSortOrder) {
   return data;
 }
 
-export async function deleteEventImage(image) {
+export async function deleteShowImage(image) {
   const { error } = await supabase.from('event_images').delete().eq('id', image.id);
   if (error) throw error;
   await deleteImageFile('event-images', image.path);
 }
 
-export async function reorderEventImage(imageA, imageB) {
+export async function reorderShowImage(imageA, imageB) {
   // Intercambia el sort_order de dos imágenes (mover arriba/abajo).
   const { error: e1 } = await supabase
     .from('event_images')
@@ -342,21 +432,21 @@ export async function reorderEventImage(imageA, imageB) {
 // --- Sponsors / auspiciantes de evento (máx. 5, misma mecánica que las
 // imágenes de evento — se guardan en el mismo bucket, bajo una
 // subcarpeta "sponsors") ---
-export async function listEventSponsors(eventId) {
+export async function listShowSponsors(showId) {
   const { data, error } = await supabase
     .from('event_sponsors')
     .select('*')
-    .eq('event_id', eventId)
+    .eq('show_id', showId)
     .order('sort_order');
   if (error) throw error;
   return data;
 }
 
-export async function addEventSponsor(eventId, file, nextSortOrder) {
-  const { url, path } = await uploadImageFile('event-images', `${eventId}/sponsors`, file);
+export async function addShowSponsor(showId, file, nextSortOrder) {
+  const { url, path } = await uploadImageFile('event-images', `${showId}/sponsors`, file);
   const { data, error } = await supabase
     .from('event_sponsors')
-    .insert({ event_id: eventId, url, path, sort_order: nextSortOrder })
+    .insert({ show_id: showId, url, path, sort_order: nextSortOrder })
     .select()
     .single();
   if (error) {
@@ -366,13 +456,13 @@ export async function addEventSponsor(eventId, file, nextSortOrder) {
   return data;
 }
 
-export async function deleteEventSponsor(sponsor) {
+export async function deleteShowSponsor(sponsor) {
   const { error } = await supabase.from('event_sponsors').delete().eq('id', sponsor.id);
   if (error) throw error;
   await deleteImageFile('event-images', sponsor.path);
 }
 
-export async function reorderEventSponsor(a, b) {
+export async function reorderShowSponsor(a, b) {
   const { error: e1 } = await supabase.from('event_sponsors').update({ sort_order: b.sort_order }).eq('id', a.id);
   if (e1) throw e1;
   const { error: e2 } = await supabase.from('event_sponsors').update({ sort_order: a.sort_order }).eq('id', b.id);

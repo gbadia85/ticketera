@@ -12,6 +12,27 @@ funcionalidad.
 
 ---
 
+## 🎭 Un concepto clave: "evento" vs. "función"
+
+Desde la migración `0010`, lo que antes era "un evento" se separó en
+dos cosas:
+
+- **El evento** (tabla `shows` en la base, componente `EventsTab` /
+  `EventDetailsPage` en el código): título, descripción, imágenes,
+  sponsors, sala. Es "la obra" o "el espectáculo" — no tiene fecha
+  propia.
+- **Cada función** (sigue siendo la tabla `events`): una fecha/hora
+  puntual de ese evento. Es la unidad de venta: cada función tiene su
+  propio mapa de butacas, precios, reservas, caja y check-in.
+
+Un evento puede tener una función sola (lo más común) o varias — por
+ejemplo la misma obra un viernes y un sábado, cada una con su propio
+mapa de butacas y su propia disponibilidad. En el código, vas a ver
+`show` (o `showId`) para lo primero, y `funcion`/`event`/`eventId` para
+lo segundo — si una variable tiene fecha, es una función.
+
+---
+
 ## 🎨 El archivo que más vas a tocar
 
 | Archivo | Para qué sirve |
@@ -52,7 +73,7 @@ funcionalidad.
 | Archivo | Para qué sirve |
 |---|---|
 | `HomePage.jsx` | La cartelera pública (`/`): lista de eventos, con filtro por sala. Muestra la imagen de portada del evento si tiene alguna cargada. |
-| `EventDetailsPage.jsx` | Detalle de un evento (`/evento/:id`): título/descripción/fecha/sala a la izquierda (arriba en mobile) y galería de imágenes a la derecha; debajo, mapa de butacas interactivo (o selector de cantidad en salas de entrada general), selección, precios de referencia y sección de sponsors. Sello de "Agotado" y aviso de venta cerrada. |
+| `EventDetailsPage.jsx` | Detalle de un evento (`/evento/:showId`): título/descripción/sala a la izquierda (arriba en mobile) y galería de imágenes a la derecha; **selector de función** si tiene más de una; debajo, mapa de butacas interactivo (o selector de cantidad en salas de entrada general) para la función elegida, precios de referencia y sección de sponsors. Sello de "Agotado"/"Evento pasado", botones de compartir. |
 | `CheckoutPage.jsx` | Checkout (`/checkout/:id`): cuenta regresiva del hold, formulario del comprador, botón de pago que redirige a Mercado Pago. |
 | `PaymentResultPage.jsx` | Pantalla de vuelta de Mercado Pago (`/pago/resultado`): consulta el estado de la reserva hasta confirmar. |
 | `VenuesPage.jsx` | Listado público de salas (`/salas`): tarjetas con imagen de portada, dirección y capacidad. |
@@ -74,7 +95,7 @@ funcionalidad.
 | `AdminLogin.jsx` | Formulario de login (usa Supabase Auth). |
 | `VenuesTab.jsx` | Lista de salas: crear, eliminar, entrar al editor de cada una. |
 | `VenueEditor.jsx` | El editor de una sala: datos básicos, **descripción**, **imágenes**, el toggle de **entrada general** (sin mapa de butacas), zonas de precio (con paleta de colores acotada), y la grilla de butacas (generar, pintar por zona, marcar pasillos, **mover butacas**, con la **letra de fila** visible al costado). |
-| `EventsTab.jsx` | Lista de eventos: crear, **editar** (título/descripción/fecha — valida que no choque con otro evento de la misma sala —, y marcar **Agotado** a mano), **gestionar imágenes**, **gestionar sponsors** (hasta 5, con etiqueta editable), configurar precios (por zona, o un precio único si la sala es de entrada general) y publicar. |
+| `EventsTab.jsx` | Lista de eventos (shows), cada uno con sus funciones adentro: crear evento (con su primera función), **agregar más funciones** (otros días/horarios, valida que no choquen con otro evento de la misma sala), editar evento (título/descripción/sponsors) o función (fecha, **Agotado** manual), **gestionar imágenes y sponsors** (a nivel evento, se comparten entre funciones), configurar precios y publicar cada función. |
 | `ImageManager.jsx` | Componente reutilizable de subida/borrado/reorden de imágenes, usado por `EventsTab` (imágenes y sponsors) y `VenueEditor`. |
 | `ReservationsTab.jsx` | Planilla de reservas, filtrable por sala, evento y estado (las expiradas quedan ocultas por defecto), con botón para imprimir. |
 | `DoorSalesTab.jsx` | Venta en puerta: abrir/cerrar caja (con arqueo), elegir butacas en el mapa (o cantidad, en salas de entrada general), método de pago (contado/transferencia/otro), cargar comprador, y **devolver entradas** (busca por nombre, libera la butaca, el cajero carga cuánto devolvió de verdad). Solo el contado cuenta para el arqueo. |
@@ -95,7 +116,7 @@ probablemente el problema esté en uno de estos archivos.
 | Archivo | Para qué sirve |
 |---|---|
 | `supabaseClient.js` | Crea el cliente de Supabase usando las variables de `.env`. |
-| `api.js` | Todas las consultas a la base de datos: salas, zonas, butacas, eventos, reservas, **imágenes** (subida/borrado/reorden, y vaciado completo de Storage), **caja** (abrir/cerrar/arqueo), **check-in** de entradas, **personalización del sitio** (`site_settings`), y las acciones de la Zona de Peligro. Si necesitás agregar una consulta nueva a Supabase, va acá. |
+| `api.js` | Todas las consultas a la base de datos: salas, **shows y funciones** (`listShows`, `createFuncion`, etc.), butacas, reservas, **imágenes** (subida/borrado/reorden, y vaciado completo de Storage), **caja** (abrir/cerrar/arqueo, devoluciones), **check-in** de entradas, **personalización del sitio** (`site_settings`), y las acciones de la Zona de Peligro. Si necesitás agregar una consulta nueva a Supabase, va acá. |
 | `booking.js` | El flujo de compra: retener butacas (`holdSeats`), crear la reserva pendiente, pedir la preferencia de pago a la Edge Function (o confirmarla al instante en modo simulado), consultar el estado del pago, y la venta en puerta (`createDoorSale`). |
 | `session.js` | Genera y guarda un ID anónimo por navegador (para saber qué butacas retuvo cada comprador sin necesidad de login). |
 | `theme.js` | Aplica los colores guardados en `site_settings` como variables CSS en tiempo real (sin rebuild) — lo usa `SiteSettingsContext`. |
@@ -134,6 +155,7 @@ probablemente el problema esté en uno de estos archivos.
 | `0007_checkin_capacity_soldout.sql` | Check-in con estados adentro/salió/cancelar (con historial); una sala no puede tener dos eventos en la misma fecha y hora; corte de venta 30 min después de empezada la función; "Agotado" automático o manual; salas de entrada general (sin mapa de butacas). |
 | `0008_fixes_payments_settings.sql` | Fix del bug "seat_id is ambiguous" en `hold_seats`; método de pago "transferencia" en la venta en puerta; borrado de reservas expiradas; sync de capacidad para entrada general; tabla `site_settings` para personalizar el sitio desde el admin. |
 | `0009_sponsors_checkin_refunds.sql` | Sponsors por evento (`event_sponsors`); check-in en dos pasos (`lookup_reservation_checkin` / `confirm_reservation_checkin`); `events.checkin_enabled` para habilitar el ingreso solo al evento correspondiente; devolución de entradas (`refund_reservation`, ajusta `close_cash_shift`). |
+| `0010_shows_and_funciones.sql` | **La más grande.** Separa "el evento" (tabla nueva `shows`: título, descripción, imágenes, sponsors, sala) de "cada función" (`events`: fecha/hora puntual — sigue siendo la unidad de venta). Migra los eventos existentes a shows con una función cada uno, sin pérdida de datos. |
 
 ### `supabase/functions/` — Edge Functions (código de servidor)
 
@@ -164,6 +186,7 @@ probablemente el problema esté en uno de estos archivos.
 - **"Quiero agregar sponsors/auspiciantes a un evento"** → botón con ícono de maletín en la fila del evento, en la pestaña "Eventos" del admin
 - **"El lector de QR dice que el ingreso no está habilitado"** → activá el evento correspondiente en el panel "Habilitar ingreso al evento", arriba de la pestaña "Lector QR"
 - **"Necesito devolver una entrada vendida en puerta"** → pestaña "Venta en puerta" → botón "Devolver entrada" (busca por nombre, requiere caja abierta)
+- **"La misma obra se hace varios días, ¿cómo cargo eso?"** → creá el evento una vez, y desde su fila en "Eventos" usá "Agregar función" para cada fecha/horario nuevo — comparten título, imágenes y sponsors, pero cada uno tiene su propio mapa de butacas y precios
 - **"Quiero agregar un dato al formulario de compra"** → `src/pages/CheckoutPage.jsx` + `create_pending_reservation` en `0001_init.sql` (para guardarlo) + `create-payment-preference/index.ts` (si tiene que viajar a Mercado Pago)
 - **"Un botón del admin no hace lo que debería"** → buscá el componente en `src/components/admin/`
 - **"Quiero cambiar el footer (redes sociales, teléfono, email)"** → `src/site.config.js` (sección `footer`) — no hace falta tocar `Footer.jsx`

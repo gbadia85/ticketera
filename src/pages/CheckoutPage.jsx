@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
 import { useCountdown, formatMMSS } from '@/hooks/useCountdown';
-import { getEvent, listMyHeldSeats } from '@/lib/api';
+import { getFuncion, listMyHeldSeats } from '@/lib/api';
 import { createPendingReservation, createPaymentPreference, mockConfirmPayment, PAYMENT_MODE } from '@/lib/booking';
 import { getSessionId } from '@/lib/session';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
@@ -53,7 +53,7 @@ const CheckoutPage = () => {
   const secondsLeft = useCountdown(earliestHeldUntil, handleExpire);
 
   useEffect(() => {
-    getEvent(eventId).then(setEvent).catch(() => {});
+    getFuncion(eventId).then(setEvent).catch(() => {});
     listMyHeldSeats(eventId, sessionId)
       .then((seats) => {
         if (seats.length === 0) {
@@ -117,7 +117,7 @@ const CheckoutPage = () => {
   return (
     <>
       <Helmet>
-        <title>Checkout — {event.title}</title>
+        <title>Checkout — {event.shows?.title}</title>
       </Helmet>
 
       <div className="min-h-screen flex flex-col">
@@ -194,7 +194,7 @@ const CheckoutPage = () => {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div>
-                    <h3 className="font-semibold">{event.title}</h3>
+                    <h3 className="font-semibold">{event.shows?.title}</h3>
                     <p className="text-sm text-muted-foreground">{event.venues?.name}</p>
                     <p className="text-sm text-muted-foreground">{formatDateTime(event.event_date)}</p>
                   </div>

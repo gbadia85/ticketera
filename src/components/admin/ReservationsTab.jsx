@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Printer } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { listReservations, listVenues, listAllEvents } from '@/lib/api';
+import { listReservations, listVenues, listAllFunciones } from '@/lib/api';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
 
 const STATUS_LABELS = {
@@ -11,6 +11,7 @@ const STATUS_LABELS = {
   rejected: { label: 'Rechazada', variant: 'destructive' },
   cancelled: { label: 'Cancelada', variant: 'destructive' },
   expired: { label: 'Expirada', variant: 'secondary' },
+  refunded: { label: 'Devuelta', variant: 'outline' },
 };
 
 const PAYMENT_METHOD_LABELS = {
@@ -36,7 +37,7 @@ const ReservationsTab = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([listVenues(), listAllEvents()]).then(([v, e]) => {
+    Promise.all([listVenues(), listAllFunciones()]).then(([v, e]) => {
       setVenues(v);
       setEvents(e);
     });
@@ -110,7 +111,7 @@ const ReservationsTab = () => {
             <option value="">Todos los eventos{venueId ? ' de esta sala' : ''}</option>
             {eventsForVenueFilter.map((e) => (
               <option key={e.id} value={e.id}>
-                {e.title}
+                {e.shows?.title} — {formatDateTime(e.event_date)}
               </option>
             ))}
           </select>
@@ -127,6 +128,7 @@ const ReservationsTab = () => {
             <option value="approved">Solo aprobadas</option>
             <option value="pending">Solo pendientes</option>
             <option value="expired">Solo expiradas{expiredCount > 0 ? ` (${expiredCount})` : ''}</option>
+            <option value="refunded">Solo devueltas</option>
             <option value="rejected">Solo rechazadas</option>
             <option value="cancelled">Solo canceladas</option>
           </select>
@@ -172,7 +174,7 @@ const ReservationsTab = () => {
                     <div className="font-medium">{r.first_name} {r.last_name}</div>
                     {r.email && <div className="text-xs text-muted-foreground">{r.email}</div>}
                   </td>
-                  <td className="p-3">{r.events?.title}</td>
+                  <td className="p-3">{r.events?.shows?.title}</td>
                   <td className="p-3">{r.events?.venues?.name}</td>
                   <td className="p-3">
                     {(r.reservation_seats ?? []).map((rs) => rs.event_seats?.seats?.label).filter(Boolean).join(', ')}

@@ -36,6 +36,7 @@ export async function sendTicketConfirmationEmail(params: {
   const formattedDate = new Date(eventDate).toLocaleString('es-AR', {
     dateStyle: 'full',
     timeStyle: 'short',
+    timeZone: 'America/Argentina/Buenos_Aires',
   });
   const formattedTotal = new Intl.NumberFormat('es-AR', {
     style: 'currency',

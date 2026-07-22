@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, DollarSign, Lock, Minus, Plus, Printer, RotateCcw, Search, Ticket, Unlock, Users } from 'lucide-react';
+import { CheckCircle2, DollarSign, Lock, Minus, Plus, Power, Printer, RotateCcw, Search, Ticket, Unlock, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,12 +13,13 @@ import SeatMap, { SeatMapLegend } from '@/components/SeatMap';
 import {
   closeCashShift,
   getOpenCashShift,
-  listAllEvents,
+  listAllFunciones,
   listCashShiftRefunds,
   listCashShiftSales,
   openCashShift,
   refundReservation,
   searchRefundableReservations,
+  updateFuncion,
 } from '@/lib/api';
 import { createDoorSale } from '@/lib/booking';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
@@ -57,9 +58,10 @@ const DoorSalesTab = () => {
 
   const { seats } = useEventSeats(eventId || null);
 
-  useEffect(() => {
-    listAllEvents().then((data) => setEvents(data.filter((e) => e.status === 'scheduled')));
-  }, []);
+  const reloadEvents = () => {
+    listAllFunciones().then((data) => setEvents(data.filter((e) => e.status === 'scheduled')));
+  };
+  useEffect(reloadEvents, []);
 
   const reloadShift = async (id) => {
     setShift(undefined);
@@ -135,6 +137,15 @@ const DoorSalesTab = () => {
       toast({ title: 'Caja abierta' });
     } catch (err) {
       toast({ title: 'No pudimos abrir la caja', description: err.message, variant: 'destructive' });
+    }
+  };
+
+  const handleToggleCheckin = async (event) => {
+    try {
+      await updateFuncion(event.id, { checkin_enabled: !event.checkin_enabled });
+      reloadEvents();
+    } catch (err) {
+      toast({ title: 'No pudimos actualizar el evento', description: err.message, variant: 'destructive' });
     }
   };
 
@@ -252,11 +263,31 @@ const DoorSalesTab = () => {
           <option value="">Elegí un evento…</option>
           {events.map((e) => (
             <option key={e.id} value={e.id}>
-              {e.title} — {formatDateTime(e.event_date)}
+              {e.shows?.title} — {formatDateTime(e.event_date)}
             </option>
           ))}
         </select>
       </div>
+
+      {selectedEvent && (
+        <label className="flex items-start gap-2 text-sm max-w-sm rounded-md border border-border p-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={!!selectedEvent.checkin_enabled}
+            onChange={() => handleToggleCheckin(selectedEvent)}
+            className="h-4 w-4 rounded border-input mt-0.5"
+          />
+          <span>
+            <span className="flex items-center gap-1.5 font-medium">
+              <Power className="h-3.5 w-3.5 text-gold" /> Habilitar ingreso a esta función
+            </span>
+            <span className="block text-xs text-muted-foreground">
+              Solo se puede escanear y confirmar el ingreso de entradas de eventos habilitados acá — así nadie entra
+              con el QR de otra función.
+            </span>
+          </span>
+        </label>
+      )}
 
       {!eventId && <p className="text-sm text-muted-foreground">Elegí un evento para empezar a vender en puerta.</p>}
 

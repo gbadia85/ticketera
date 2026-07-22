@@ -21,6 +21,7 @@ export function formatDateTime(isoString) {
     month: 'long',
     hour: '2-digit',
     minute: '2-digit',
+    timeZone: 'America/Argentina/Buenos_Aires',
   });
 }
 
@@ -30,5 +31,6 @@ export function formatDateShort(isoString) {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
+    timeZone: 'America/Argentina/Buenos_Aires',
   });
 }
