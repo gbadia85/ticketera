@@ -23,12 +23,12 @@ export const siteConfig = {
   // IDENTIDAD: nombre, logo, título de pestaña del navegador
   // -------------------------------------------------------------------
   identity: {
-    siteName: 'Butaca',
-    tagline: 'Venta de entradas y mapa de asientos',
+    siteName: 'Aburridos Producciones',
+    tagline: 'Venta de entradas y producción de Eventos',
 
     // Título y descripción que aparecen en la pestaña del navegador y
     // en resultados de búsqueda / al compartir el link.
-    metaTitle: 'Butaca — Venta de entradas y mapa de asientos',
+    metaTitle: 'AP — Venta de entradas y producción de Eventos',
     metaDescription:
       'Comprá entradas y elegí tu butaca para las próximas funciones de teatro.',
 
@@ -180,20 +180,20 @@ export const siteConfig = {
   // que pongas en contact.phone (sin espacios, con código de país).
   // -------------------------------------------------------------------
   footer: {
-    text: 'Butaca — Venta de entradas y mapa de asientos.',
-    copyright: '© {year} Butaca. Todos los derechos reservados.',
+    text: 'Aburridos Producciones — Venta de entradas y producción de eventos.',
+    copyright: '© {year} AP. Todos los derechos reservados.',
     contact: {
-      phone: '', // ej: '+54 9 11 1234-5678'
-      email: '', // ej: 'contacto@butaca.com'
-      address: '', // ej: 'Av. Corrientes 1234, CABA'
+      phone: '+54 9 3462 123456', // ej: '+54 9 11 1234-5678'
+      email: 'ventas@aburridosproducciones.com.ar', // ej: 'contacto@butaca.com'
+      address: 'Murphy, Santa Fe, Argentina', // ej: 'Av. Corrientes 1234, CABA'
     },
     social: [
-      { platform: 'instagram', url: '' },
-      { platform: 'facebook', url: '' },
+      { platform: 'instagram', url: 'xxx' },
+      { platform: 'facebook', url: 'xxx' },
       { platform: 'x', url: '' },
-      { platform: 'youtube', url: '' },
+      { platform: 'youtube', url: 'xxx' },
       { platform: 'tiktok', url: '' },
-      { platform: 'whatsapp', url: '' },
+      { platform: 'whatsapp', url: 'xxx' },
     ],
   },
 
