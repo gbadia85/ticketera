@@ -90,7 +90,8 @@ export async function sendTicketConfirmationEmail(params: {
 
   if (!res.ok) {
     const detail = await res.text();
-    console.error('Error enviando email con Resend:', detail);
+    console.error('Error enviando email con Resend:', res.status, detail);
+    throw new Error(`resend_error_${res.status}: ${detail}`);
   }
 }
 

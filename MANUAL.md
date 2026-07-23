@@ -98,12 +98,12 @@ lo segundo — si una variable tiene fecha, es una función.
 | `EventsTab.jsx` | Lista de eventos (shows), cada uno con sus funciones adentro: crear evento (con su primera función), **agregar más funciones** (otros días/horarios, valida que no choquen con otro evento de la misma sala), editar evento (título/descripción/sponsors) o función (fecha, **Agotado** manual), **gestionar imágenes y sponsors** (a nivel evento, se comparten entre funciones), configurar precios y publicar cada función. |
 | `ImageManager.jsx` | Componente reutilizable de subida/borrado/reorden de imágenes, usado por `EventsTab` (imágenes y sponsors) y `VenueEditor`. |
 | `ReservationsTab.jsx` | Planilla de reservas, filtrable por sala, evento y estado (las expiradas quedan ocultas por defecto), con botón para imprimir. |
-| `DoorSalesTab.jsx` | Venta en puerta: abrís la caja una vez (ya no atada a un evento) y elegís para qué evento/función es cada venta en el momento — butacas en el mapa (o cantidad, en salas de entrada general, con **sobreventa opcional** avisando cuánto se supera la capacidad), método de pago (contado/transferencia/otro), y **devolver entradas** (busca por nombre en cualquier evento, libera la butaca, el cajero carga cuánto devolvió de verdad). Solo el contado cuenta para el arqueo. |
+| `DoorSalesTab.jsx` | Venta en puerta: abrís la caja una vez (ya no atada a un evento) y elegís para qué evento/función es cada venta en el momento — butacas en el mapa (o cantidad, en salas de entrada general, con **sobreventa opcional**; o **de pie, sin butaca**, en salas con mapa, ambas avisando antes de confirmar), método de pago (contado/transferencia/otro), y **devolver entradas** (busca por nombre en cualquier evento, libera la butaca, el cajero carga cuánto devolvió de verdad). Solo el contado cuenta para el arqueo. |
 | `OpenDoorTab.jsx` | Pestaña "Abrir puerta": habilita (o deshabilita) el ingreso de uno o más eventos a la vez — separado de la venta, para que lo pueda operar otra persona. |
 | `QrScannerTab.jsx` | Lector de QR por cámara (con `jsqr`), pantalla minimalista (solo cámara + botones + "Salir del lector"): al leer, muestra el dato **sin marcar el ingreso todavía** — hay que tocar "OK, dejar entrar". Si hay más de un evento habilitado a la vez, pregunta a cuál está fijado ese lector, y rechaza entradas de otro evento habilitado ("puerta equivocada"). Si el mismo QR se vuelve a leer, alerta y deja "Marcar salida" o "Cancelar ingreso". |
 | `SiteSettingsTab.jsx` | Personalizar el sitio desde el admin: nombre, logo (subida de imagen) y colores — se aplican en todo el sitio al instante al guardar, sin tocar código ni redeployar. |
 | `DangerZoneTab.jsx` | Pestaña "Peligro": eliminar reservas expiradas, vaciar imágenes subidas, borrar todos los eventos / todas las salas / resetear la base completa — todas con confirmación escrita, y las que corresponde también vacían los archivos de Storage (no solo las filas). |
-| `LiveEntryBoard.jsx` | Pantalla en vivo para el día del evento: mapa de butacas vendidas + lista de ingresos en tiempo real, para la persona de boletería. |
+| `LiveEntryBoard.jsx` | Pantalla en vivo para el día del evento: mapa de butacas vendidas + lista de ingresos en tiempo real (adentro/salió), para la persona de boletería — con botón de actualizar manual por las dudas. |
 
 #### `src/components/ui/`
 
@@ -160,6 +160,7 @@ probablemente el problema esté en uno de estos archivos.
 | `0011_shared_cash_shift_and_doors.sql` | La caja deja de estar atada a un evento puntual (se abre una vez, se vende para cualquier evento publicado). El lector de QR se puede "fijar" a un evento — si hay más de uno habilitado, rechaza entradas de otro evento habilitado que no sea el de ese lector ("puerta equivocada"). |
 | `0012_venue_sort_order.sql` | Agrega `sort_order` a las salas, para poder elegir cuál aparece primero en "Salas" (antes era siempre alfabético). |
 | `0013_general_admission_oversell.sql` | Permite sobreventa en salas de entrada general desde la venta en puerta — el cajero confirma explícitamente, avisado de cuánto se supera la capacidad. |
+| `0014_standing_tickets_and_realtime_fix.sql` | Venta "de pie" (sin butaca) en salas con mapa de butacas, solo desde venta en puerta. `REPLICA IDENTITY FULL` en `reservations`/`event_seats` para que Realtime refleje cambios de forma confiable (afectaba la pantalla en vivo con entradas/salidas). |
 
 ### `supabase/functions/` — Edge Functions (código de servidor)
 

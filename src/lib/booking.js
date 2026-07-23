@@ -113,7 +113,7 @@ export async function mockConfirmPayment(reservationId) {
  * (pago en efectivo, contra una caja abierta). Requiere estar logueado
  * como admin — usa el token de sesión actual, no la anon key.
  */
-export async function createDoorSale({ eventId, seatIds, quantity, firstName, lastName, dni, phone, cashShiftId, paymentMethod, allowOversell }) {
+export async function createDoorSale({ eventId, seatIds, quantity, standingQuantity, standingPrice, firstName, lastName, dni, phone, cashShiftId, paymentMethod, allowOversell }) {
   const { data: sessionData } = await supabase.auth.getSession();
   const accessToken = sessionData?.session?.access_token;
   if (!accessToken) throw new Error('not_authenticated');
@@ -129,6 +129,8 @@ export async function createDoorSale({ eventId, seatIds, quantity, firstName, la
       event_id: eventId,
       seat_ids: seatIds,
       quantity,
+      standing_quantity: standingQuantity,
+      standing_price: standingPrice,
       first_name: firstName,
       last_name: lastName,
       dni,

@@ -41,15 +41,19 @@ Deno.serve(async (req: Request) => {
     const soldBy = userData.user.email ?? userData.user.id;
 
     const body = await req.json();
-    const { event_id, seat_ids, quantity, first_name, last_name, dni, phone, cash_shift_id, payment_method, allow_oversell } = body;
+    const { event_id, seat_ids, quantity, standing_quantity, standing_price, first_name, last_name, dni, phone, cash_shift_id, payment_method, allow_oversell } = body;
 
     const hasSeatIds = Array.isArray(seat_ids) && seat_ids.length > 0;
     const hasQuantity = Number.isInteger(quantity) && quantity > 0;
+    const hasStanding = Number.isInteger(standing_quantity) && standing_quantity > 0;
     const validPaymentMethods = ['efectivo', 'transferencia', 'simulado'];
     const resolvedPaymentMethod = validPaymentMethods.includes(payment_method) ? payment_method : 'efectivo';
 
-    if (!event_id || (!hasSeatIds && !hasQuantity) || !first_name || !last_name || !cash_shift_id) {
+    if (!event_id || (!hasSeatIds && !hasQuantity && !hasStanding) || !first_name || !last_name || !cash_shift_id) {
       return jsonResponse({ error: 'missing_fields' }, 400);
+    }
+    if (hasStanding && (standing_price === undefined || standing_price === null || Number(standing_price) < 0)) {
+      return jsonResponse({ error: 'missing_fields', detail: 'Falta el precio de la entrada de pie.' }, 400);
     }
 
     const supabase = createClient(supabaseUrl, getServiceRoleKey());
@@ -73,13 +77,21 @@ Deno.serve(async (req: Request) => {
           p_session_id: sessionId,
           p_hold_minutes: 3,
         })
-      : supabase.rpc('hold_next_available_seats', {
-          p_event_id: event_id,
-          p_quantity: quantity,
-          p_session_id: sessionId,
-          p_hold_minutes: 3,
-          p_allow_oversell: !!allow_oversell,
-        });
+      : hasStanding
+        ? supabase.rpc('create_standing_tickets', {
+            p_event_id: event_id,
+            p_quantity: standing_quantity,
+            p_session_id: sessionId,
+            p_price: standing_price,
+            p_hold_minutes: 3,
+          })
+        : supabase.rpc('hold_next_available_seats', {
+            p_event_id: event_id,
+            p_quantity: quantity,
+            p_session_id: sessionId,
+            p_hold_minutes: 3,
+            p_allow_oversell: !!allow_oversell,
+          });
 
     const { error: holdError } = await holdRpc;
     if (holdError) {
@@ -138,6 +150,7 @@ function mapRpcError(msg: string): string {
   if (msg.includes('sales_closed')) return 'sales_closed';
   if (msg.includes('not_enough_seats')) return 'not_enough_seats';
   if (msg.includes('invalid_quantity')) return 'invalid_quantity';
+  if (msg.includes('invalid_price')) return 'invalid_price';
   if (msg.includes('event_not_found')) return 'event_not_found';
   return msg || 'unknown_error';
 }

@@ -41,6 +41,10 @@ const DoorSalesTab = () => {
   const [submitting, setSubmitting] = useState(false);
   const [lastSale, setLastSale] = useState(null);
   const [oversellPending, setOversellPending] = useState(null);
+  const [standingMode, setStandingMode] = useState(false);
+  const [standingQuantity, setStandingQuantity] = useState(1);
+  const [standingPrice, setStandingPrice] = useState('');
+  const [standingConfirmOpen, setStandingConfirmOpen] = useState(false);
 
   const [openingAmount, setOpeningAmount] = useState('0');
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
@@ -82,6 +86,9 @@ const DoorSalesTab = () => {
   useEffect(() => {
     setSelectedIds(new Set());
     setQuantity(1);
+    setStandingMode(false);
+    setStandingQuantity(1);
+    setStandingPrice('');
   }, [eventId]);
 
   const selectedEvent = events.find((e) => e.id === eventId);
@@ -118,9 +125,12 @@ const DoorSalesTab = () => {
   const selectedSeats = normalizedSeats.filter((s) => selectedIds.has(s.seatId));
   const availableCount = normalizedSeats.filter((s) => s.status === 'available').length;
   const generalPrice = normalizedSeats[0]?.price ?? 0;
-  const total = isGeneralAdmission
-    ? quantity * generalPrice
-    : selectedSeats.reduce((sum, s) => sum + Number(s.price), 0);
+  const standingTotal = standingQuantity * (Number(standingPrice) || 0);
+  const total = standingMode
+    ? standingTotal
+    : isGeneralAdmission
+      ? quantity * generalPrice
+      : selectedSeats.reduce((sum, s) => sum + Number(s.price), 0);
 
   const handleToggle = (seat) => {
     setSelectedIds((prev) => {
@@ -158,22 +168,36 @@ const DoorSalesTab = () => {
     }
   };
 
-  const handleRegisterSale = async (allowOversell = false) => {
-    const hasSelection = isGeneralAdmission ? quantity > 0 : selectedSeats.length > 0;
-    if (!buyer.firstName || !buyer.lastName || !hasSelection) {
-      toast({ title: 'Faltan datos', description: 'Elegí butacas y completá nombre y apellido.', variant: 'destructive' });
-      return;
+  const handleRegisterSale = async (allowOversell = false, confirmedStanding = false) => {
+    if (standingMode) {
+      if (!buyer.firstName || !buyer.lastName || standingQuantity < 1 || standingPrice === '') {
+        toast({ title: 'Faltan datos', description: 'Completá cantidad, precio, nombre y apellido.', variant: 'destructive' });
+        return;
+      }
+      if (!confirmedStanding) {
+        setStandingConfirmOpen(true);
+        return;
+      }
+    } else {
+      const hasSelection = isGeneralAdmission ? quantity > 0 : selectedSeats.length > 0;
+      if (!buyer.firstName || !buyer.lastName || !hasSelection) {
+        toast({ title: 'Faltan datos', description: 'Elegí butacas y completá nombre y apellido.', variant: 'destructive' });
+        return;
+      }
+      if (isGeneralAdmission && !allowOversell && quantity > availableCount) {
+        setOversellPending({ over: quantity - availableCount, availableCount });
+        return;
+      }
     }
-    if (isGeneralAdmission && !allowOversell && quantity > availableCount) {
-      setOversellPending({ over: quantity - availableCount, availableCount });
-      return;
-    }
+
     setSubmitting(true);
     try {
       const result = await createDoorSale({
         eventId,
-        seatIds: isGeneralAdmission ? undefined : selectedSeats.map((s) => s.seatId),
-        quantity: isGeneralAdmission ? quantity : undefined,
+        seatIds: !standingMode && !isGeneralAdmission ? selectedSeats.map((s) => s.seatId) : undefined,
+        quantity: !standingMode && isGeneralAdmission ? quantity : undefined,
+        standingQuantity: standingMode ? standingQuantity : undefined,
+        standingPrice: standingMode ? Number(standingPrice) : undefined,
         firstName: buyer.firstName,
         lastName: buyer.lastName,
         dni: buyer.dni || null,
@@ -185,9 +209,13 @@ const DoorSalesTab = () => {
       setLastSale(result);
       setSelectedIds(new Set());
       setQuantity(1);
+      setStandingMode(false);
+      setStandingQuantity(1);
+      setStandingPrice('');
       setBuyer({ firstName: '', lastName: '', dni: '', phone: '' });
       setPaymentMethod('efectivo');
       setOversellPending(null);
+      setStandingConfirmOpen(false);
       setSales(await listCashShiftSales(shift.id));
     } catch (err) {
       const messages = {
@@ -195,6 +223,7 @@ const DoorSalesTab = () => {
         shift_not_open: 'La caja se cerró — abrila de nuevo para seguir vendiendo.',
         sales_closed: 'La venta de entradas para esta función ya cerró.',
         not_enough_seats: 'No quedan tantos lugares disponibles.',
+        invalid_price: 'El precio de la entrada de pie no es válido.',
       };
       toast({
         title: 'No pudimos registrar la venta',
@@ -328,7 +357,9 @@ const DoorSalesTab = () => {
               <div className="lg:col-span-2">
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-lg">{isGeneralAdmission ? 'Cantidad de entradas' : 'Elegí las butacas'}</CardTitle>
+                    <CardTitle className="text-lg">
+                    {isGeneralAdmission ? 'Cantidad de entradas' : standingMode ? 'Entradas de pie (sin butaca)' : 'Elegí las butacas'}
+                  </CardTitle>
                   </CardHeader>
                   <CardContent>
                     {isGeneralAdmission ? (
@@ -353,12 +384,51 @@ const DoorSalesTab = () => {
                           <span className="text-sm text-muted-foreground ml-2">{formatCurrency(generalPrice)} c/u</span>
                         </div>
                       </div>
+                    ) : standingMode ? (
+                      <div className="space-y-4">
+                        <p className="text-sm text-destructive flex items-start gap-2">
+                          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                          Esto vende entradas SIN butaca asignada — la persona entra de pie. Usalo solo si la sala lo
+                          permite.
+                        </p>
+                        <div className="flex items-center gap-4">
+                          <button
+                            onClick={() => setStandingQuantity((q) => Math.max(1, q - 1))}
+                            className="h-10 w-10 rounded-full border border-border flex items-center justify-center hover:border-gold/60"
+                          >
+                            <Minus className="h-4 w-4" />
+                          </button>
+                          <span className="text-2xl font-display w-10 text-center">{standingQuantity}</span>
+                          <button
+                            onClick={() => setStandingQuantity((q) => q + 1)}
+                            className="h-10 w-10 rounded-full border border-border flex items-center justify-center hover:border-gold/60"
+                          >
+                            <Plus className="h-4 w-4" />
+                          </button>
+                        </div>
+                        <div className="space-y-2 max-w-[160px]">
+                          <Label>Precio c/u</Label>
+                          <Input type="number" min="0" value={standingPrice} onChange={(e) => setStandingPrice(e.target.value)} />
+                        </div>
+                        <button
+                          onClick={() => setStandingMode(false)}
+                          className="text-xs text-muted-foreground hover:text-gold underline"
+                        >
+                          Volver a elegir butacas
+                        </button>
+                      </div>
                     ) : (
                       <>
                         <SeatMap seats={normalizedSeats} selectedIds={selectedIds} onToggle={handleToggle} />
                         <div className="mt-6">
                           <SeatMapLegend zones={zonesInEvent} />
                         </div>
+                        <button
+                          onClick={() => setStandingMode(true)}
+                          className="mt-4 text-xs text-muted-foreground hover:text-gold underline flex items-center gap-1"
+                        >
+                          <AlertTriangle className="h-3 w-3" /> ¿Vender entradas de pie, sin butaca asignada?
+                        </button>
                       </>
                     )}
                   </CardContent>
@@ -407,7 +477,12 @@ const DoorSalesTab = () => {
                     </div>
 
                     <div className="border-t border-border pt-3 space-y-1 text-sm">
-                      {isGeneralAdmission ? (
+                      {standingMode ? (
+                        <div className="flex justify-between">
+                          <span>{standingQuantity} de pie</span>
+                          <span>{formatCurrency(standingTotal)}</span>
+                        </div>
+                      ) : isGeneralAdmission ? (
                         <div className="flex justify-between">
                           <span>{quantity} entrada{quantity > 1 ? 's' : ''}</span>
                           <span>{formatCurrency(total)}</span>
@@ -423,7 +498,7 @@ const DoorSalesTab = () => {
                           ))}
                         </>
                       )}
-                      {(isGeneralAdmission ? quantity > 0 : selectedSeats.length > 0) && (
+                      {(standingMode ? standingQuantity > 0 && standingPrice !== '' : isGeneralAdmission ? quantity > 0 : selectedSeats.length > 0) && (
                         <div className="flex justify-between font-semibold pt-1">
                           <span>Total ({{ efectivo: 'contado', transferencia: 'transferencia', simulado: 'otro' }[paymentMethod]})</span>
                           <span className="text-gold">{formatCurrency(total)}</span>
@@ -544,6 +619,36 @@ const DoorSalesTab = () => {
             </Button>
             <Button variant="destructive" onClick={() => handleRegisterSale(true)}>
               Vender igual
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirmación de venta de pie (sin butaca) */}
+      <Dialog open={standingConfirmOpen} onOpenChange={setStandingConfirmOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" /> Venta sin butaca asignada
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 text-sm">
+            <p>
+              Estás por vender <span className="font-semibold text-foreground">{standingQuantity}</span> entrada
+              {standingQuantity > 1 ? 's' : ''} de pie, a <span className="font-semibold text-foreground">{formatCurrency(Number(standingPrice) || 0)}</span>{' '}
+              c/u — total <span className="font-semibold text-foreground">{formatCurrency(standingTotal)}</span>.
+            </p>
+            <p className="text-destructive font-medium">
+              Esta entrada NO tiene una butaca asignada. La persona entra de pie.
+            </p>
+            <p className="text-muted-foreground">Confirmá solo si la sala puede sostener gente de pie.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setStandingConfirmOpen(false)}>
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={() => handleRegisterSale(false, true)}>
+              Confirmar venta
             </Button>
           </DialogFooter>
         </DialogContent>

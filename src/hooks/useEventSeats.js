@@ -38,6 +38,18 @@ export function useEventSeats(eventId) {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'event_seats', filter: `event_id=eq.${eventId}` },
         (payload) => {
+          if (payload.eventType === 'INSERT') {
+            // Butaca nueva que no teníamos en memoria — puede pasar con
+            // la sobreventa, que crea event_seats sobre la marcha (antes
+            // esto no pasaba nunca, todas se creaban juntas al publicar
+            // el evento). payload.new no trae los datos de seats/
+            // seat_zones (no es un JOIN), así que recargamos todo para
+            // no dejar cálculos de precio/zona/disponibilidad
+            // desalineados.
+            reload();
+            return;
+          }
+
           setSeats((prev) => {
             const id = payload.new?.id ?? payload.old?.id;
             const idx = prev.findIndex((s) => s.id === id);
@@ -49,13 +61,7 @@ export function useEventSeats(eventId) {
               return next;
             }
 
-            if (idx === -1) {
-              // Fila nueva que todavía no tenemos en memoria (poco común:
-              // event_seats se crea una sola vez al publicar el evento).
-              // La agregamos "cruda"; el próximo reload() manual la
-              // completa con los datos de seats/seat_zones si hiciera falta.
-              return [...prev, payload.new];
-            }
+            if (idx === -1) return prev;
 
             const next = [...prev];
             next[idx] = { ...next[idx], ...payload.new };

@@ -70,38 +70,49 @@ Deno.serve(async (req: Request) => {
     const resendApiKey = Deno.env.get('RESEND_API_KEY');
     const emailFrom = Deno.env.get('EMAIL_FROM');
     if (resendApiKey && emailFrom && reservation.email) {
-      const { data: event } = await supabase
-        .from('events')
-        .select('event_date, venues ( name ), shows ( title )')
-        .eq('id', reservation.event_id)
-        .single();
+      try {
+        const { data: event, error: eventError } = await supabase
+          .from('events')
+          .select('event_date, venues ( name ), shows ( title )')
+          .eq('id', reservation.event_id)
+          .single();
+        if (eventError) console.error('mock-confirm-payment: error al buscar el evento para el mail', eventError);
 
-      const { data: seatRows } = await supabase
-        .from('reservation_seats')
-        .select('event_seats ( seats ( label ) )')
-        .eq('reservation_id', reservation_id);
+        const { data: seatRows, error: seatsError } = await supabase
+          .from('reservation_seats')
+          .select('event_seats ( seats ( label ) )')
+          .eq('reservation_id', reservation_id);
+        if (seatsError) console.error('mock-confirm-payment: error al buscar las butacas para el mail', seatsError);
 
-      const seatLabels = (seatRows ?? []).map((r: any) => r.event_seats?.seats?.label).filter(Boolean);
+        const seatLabels = (seatRows ?? [])
+          .map((r: any) => r.event_seats?.seats?.label)
+          .filter(Boolean);
 
-      const { data: siteSettings } = await supabase
-        .from('site_settings')
-        .select('site_name')
-        .eq('id', true)
-        .maybeSingle();
+        const { data: siteSettings } = await supabase
+          .from('site_settings')
+          .select('site_name')
+          .eq('id', true)
+          .maybeSingle();
 
-      await sendTicketConfirmationEmail({
-        resendApiKey,
-        emailFrom,
-        to: reservation.email,
-        firstName: reservation.first_name,
-        siteName: siteSettings?.site_name || 'Butaca',
-        eventTitle: (event as any)?.shows?.title ?? 'Evento',
-        venueName: (event as any)?.venues?.name ?? '',
-        eventDate: event?.event_date ?? new Date().toISOString(),
-        seatLabels,
-        total: Number(reservation.total_amount),
-        reservationId: reservation_id,
-      });
+        await sendTicketConfirmationEmail({
+          resendApiKey,
+          emailFrom,
+          to: reservation.email,
+          firstName: reservation.first_name,
+          siteName: siteSettings?.site_name || 'Butaca',
+          eventTitle: (event as any)?.shows?.title ?? 'Evento',
+          venueName: (event as any)?.venues?.name ?? '',
+          eventDate: event?.event_date ?? new Date().toISOString(),
+          seatLabels: seatLabels.length > 0 ? seatLabels : ['Entrada general'],
+          total: Number(reservation.total_amount),
+          reservationId: reservation_id,
+        });
+      } catch (emailErr) {
+        // Un problema al mandar el mail nunca tiene que hacer que la
+        // confirmación del pago falle — el pago ya quedó aprobado en la
+        // base pase lo que pase acá. Lo dejamos bien logueado.
+        console.error('mock-confirm-payment: no se pudo enviar el mail de confirmación', emailErr);
+      }
     }
 
     return jsonResponse({ ok: true, reservation_id });

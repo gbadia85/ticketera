@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Clock, LogIn, Users } from 'lucide-react';
+import { CheckCircle2, Clock, LogIn, RotateCcw, Users } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useEventSeats } from '@/hooks/useEventSeats';
@@ -17,7 +17,7 @@ const LiveEntryBoard = () => {
   }, []);
 
   const { seats } = useEventSeats(eventId || null);
-  const { reservations } = useEventCheckins(eventId || null);
+  const { reservations, reload: reloadCheckins } = useEventCheckins(eventId || null);
 
   const normalizedSeats = useMemo(
     () =>
@@ -127,8 +127,17 @@ const LiveEntryBoard = () => {
             <div className="lg:col-span-1">
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Clock className="h-4 w-4" /> Últimos ingresos
+                  <CardTitle className="text-base flex items-center justify-between gap-2">
+                    <span className="flex items-center gap-2">
+                      <Clock className="h-4 w-4" /> Últimos ingresos
+                    </span>
+                    <button
+                      onClick={reloadCheckins}
+                      className="text-muted-foreground hover:text-gold p-1"
+                      title="Actualizar"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                    </button>
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3 max-h-[32rem] overflow-y-auto">

@@ -257,6 +257,21 @@ de la capacidad, y solo vende de más si él lo confirma.
 Corré **`supabase/migrations/0013_general_admission_oversell.sql`**
 completo en el SQL Editor.
 
+### 1.2.12 — Aplicar la migración 0014 (venta de pie + fix de tiempo real)
+
+Agrega:
+- Venta de entradas "de pie" (sin butaca asignada) para salas CON mapa
+  de butacas — solo desde la venta en puerta, nunca online. El cajero
+  carga cantidad y precio, avisado de que no hay butaca asignada.
+- `REPLICA IDENTITY FULL` en `reservations` y `event_seats`: arregla un
+  problema conocido de Supabase Realtime donde los cambios (UPDATE) no
+  siempre llegaban de forma confiable a las suscripciones filtradas
+  (por ejemplo, la pantalla en vivo no reflejaba bien cuando alguien
+  entraba y volvía a salir).
+
+Corré **`supabase/migrations/0014_standing_tickets_and_realtime_fix.sql`**
+completo en el SQL Editor.
+
 ### 1.3 — (Opcional) Cargar datos de ejemplo
 
 Si querés una sala y un evento de prueba ya armados para no cargar todo
@@ -523,6 +538,7 @@ supabase migration repair --status applied 0010
 supabase migration repair --status applied 0011
 supabase migration repair --status applied 0012
 supabase migration repair --status applied 0013
+supabase migration repair --status applied 0014
 ```
 
 Verificá que quedó todo sincronizado:
