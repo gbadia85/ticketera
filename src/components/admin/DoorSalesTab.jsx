@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, DollarSign, Lock, Minus, Plus, Printer, RotateCcw, Search, Ticket, Unlock, Users } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, DollarSign, Lock, Minus, Plus, Printer, RotateCcw, Search, Ticket, Unlock, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -40,6 +40,7 @@ const DoorSalesTab = () => {
   const [paymentMethod, setPaymentMethod] = useState('efectivo');
   const [submitting, setSubmitting] = useState(false);
   const [lastSale, setLastSale] = useState(null);
+  const [oversellPending, setOversellPending] = useState(null);
 
   const [openingAmount, setOpeningAmount] = useState('0');
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
@@ -157,10 +158,14 @@ const DoorSalesTab = () => {
     }
   };
 
-  const handleRegisterSale = async () => {
+  const handleRegisterSale = async (allowOversell = false) => {
     const hasSelection = isGeneralAdmission ? quantity > 0 : selectedSeats.length > 0;
     if (!buyer.firstName || !buyer.lastName || !hasSelection) {
       toast({ title: 'Faltan datos', description: 'Elegí butacas y completá nombre y apellido.', variant: 'destructive' });
+      return;
+    }
+    if (isGeneralAdmission && !allowOversell && quantity > availableCount) {
+      setOversellPending({ over: quantity - availableCount, availableCount });
       return;
     }
     setSubmitting(true);
@@ -175,12 +180,14 @@ const DoorSalesTab = () => {
         phone: buyer.phone || null,
         cashShiftId: shift.id,
         paymentMethod,
+        allowOversell,
       });
       setLastSale(result);
       setSelectedIds(new Set());
       setQuantity(1);
       setBuyer({ firstName: '', lastName: '', dni: '', phone: '' });
       setPaymentMethod('efectivo');
+      setOversellPending(null);
       setSales(await listCashShiftSales(shift.id));
     } catch (err) {
       const messages = {
@@ -424,7 +431,7 @@ const DoorSalesTab = () => {
                       )}
                     </div>
 
-                    <Button onClick={handleRegisterSale} disabled={submitting} className="w-full">
+                    <Button onClick={() => handleRegisterSale()} disabled={submitting} className="w-full">
                       {submitting ? 'Registrando…' : 'Registrar venta'}
                     </Button>
                   </CardContent>
@@ -501,6 +508,42 @@ const DoorSalesTab = () => {
             </Button>
             <Button onClick={() => setLastSale(null)}>
               <Plus className="h-4 w-4 mr-2" /> Nueva venta
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirmación de sobreventa (entrada general) */}
+      <Dialog open={!!oversellPending} onOpenChange={(open) => !open && setOversellPending(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" /> Esto supera la capacidad de la sala
+            </DialogTitle>
+          </DialogHeader>
+          {oversellPending && (
+            <div className="space-y-2 text-sm">
+              <p>
+                Quedan <span className="font-semibold text-foreground">{oversellPending.availableCount}</span> lugares
+                disponibles, pero estás por vender <span className="font-semibold text-foreground">{quantity}</span>{' '}
+                entradas.
+              </p>
+              <p className="text-destructive font-medium">
+                Esto sobrevende la sala en {oversellPending.over} entrada{oversellPending.over > 1 ? 's' : ''} por
+                encima de su capacidad.
+              </p>
+              <p className="text-muted-foreground">
+                Solo confirmá si tenés previsto que esas personas entren de pie o de otra forma que la sala pueda
+                sostener — queda igual registrado como venta normal.
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOversellPending(null)}>
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={() => handleRegisterSale(true)}>
+              Vender igual
             </Button>
           </DialogFooter>
         </DialogContent>

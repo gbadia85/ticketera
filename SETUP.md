@@ -237,6 +237,26 @@ Agrega:
 Corré **`supabase/migrations/0011_shared_cash_shift_and_doors.sql`**
 completo en el SQL Editor.
 
+### 1.2.10 — Aplicar la migración 0012 (orden de las salas)
+
+Agrega `sort_order` a las salas, para poder elegir cuál aparece primero
+en "Salas" y en los filtros del admin (antes siempre era alfabético).
+A las que ya tenías cargadas les asigna el orden alfabético que ya
+tenían, así no cambia nada de golpe.
+
+Corré **`supabase/migrations/0012_venue_sort_order.sql`** completo en
+el SQL Editor.
+
+### 1.2.11 — Aplicar la migración 0013 (sobreventa en entrada general)
+
+En la venta en puerta, si una sala de entrada general está agotada, el
+cajero puede decidir vender igual (por ejemplo si van a entrar de pie)
+— el sistema le avisa primero cuánto se está sobrevendiendo por encima
+de la capacidad, y solo vende de más si él lo confirma.
+
+Corré **`supabase/migrations/0013_general_admission_oversell.sql`**
+completo en el SQL Editor.
+
 ### 1.3 — (Opcional) Cargar datos de ejemplo
 
 Si querés una sala y un evento de prueba ya armados para no cargar todo
@@ -501,6 +521,8 @@ supabase migration repair --status applied 0008
 supabase migration repair --status applied 0009
 supabase migration repair --status applied 0010
 supabase migration repair --status applied 0011
+supabase migration repair --status applied 0012
+supabase migration repair --status applied 0013
 ```
 
 Verificá que quedó todo sincronizado:

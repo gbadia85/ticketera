@@ -6,6 +6,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders, jsonResponse, getServiceRoleKey } from '../_shared/cors.ts';
+import { generateTicketQrBase64 } from '../_shared/qr.ts';
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -43,6 +44,8 @@ Deno.serve(async (req: Request) => {
 
     const seatLabels = (seatRows ?? []).map((r: any) => r.event_seats?.seats?.label).filter(Boolean);
 
+    const qrBase64 = reservation.status === 'approved' ? await generateTicketQrBase64(reservationId) : null;
+
     return jsonResponse({
       status: reservation.status,
       total: reservation.total_amount,
@@ -53,6 +56,7 @@ Deno.serve(async (req: Request) => {
         venue: (reservation as any).events?.venues?.name,
       },
       seats: seatLabels,
+      qr_base64: qrBase64,
     });
   } catch (err) {
     console.error(err);

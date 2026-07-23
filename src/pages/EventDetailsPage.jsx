@@ -187,9 +187,6 @@ const EventDetailsPage = () => {
                 {show.venues?.name}
                 {show.venues?.address ? ` — ${show.venues.address}` : ''}
               </span>
-              <Link to={`/salas/${show.venues?.id}`} className="text-xs text-gold hover:underline w-fit">
-                {t.salaSeeMore} →
-              </Link>
             </div>
 
             <div className="flex items-center gap-2 mt-4">
@@ -433,10 +430,9 @@ const EventDetailsPage = () => {
                 </Card>
               )}
 
-              {(show.venues?.venue_images?.length > 0 || show.venues?.description) && (
-                <Card>
-                  <CardContent className="p-4 flex gap-3 items-start">
-                    {show.venues?.venue_images?.[0]?.url ? (
+              <Card>
+                <CardContent className="p-4 flex gap-3 items-start">
+                  {show.venues?.venue_images?.[0]?.url ? (
                       <img
                         src={show.venues.venue_images[0].url}
                         alt={show.venues?.name}
@@ -458,7 +454,6 @@ const EventDetailsPage = () => {
                     </div>
                   </CardContent>
                 </Card>
-              )}
             </motion.div>
           </div>
         </div>

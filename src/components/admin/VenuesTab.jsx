@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, MapPin, Plus, Trash2, Users } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowUp, MapPin, Plus, Trash2, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,7 +13,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
-import { createVenue, deleteVenue, listVenues } from '@/lib/api';
+import { createVenue, deleteVenue, listVenues, reorderVenue } from '@/lib/api';
 import VenueEditor from '@/components/admin/VenueEditor';
 
 const VenuesTab = () => {
@@ -61,6 +61,18 @@ const VenuesTab = () => {
         description: 'Puede tener eventos asociados. ' + err.message,
         variant: 'destructive',
       });
+    }
+  };
+
+  const handleMove = async (venue, direction) => {
+    const index = venues.findIndex((v) => v.id === venue.id);
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= venues.length) return;
+    try {
+      await reorderVenue(venue, venues[targetIndex]);
+      reload();
+    } catch (err) {
+      toast({ title: 'No pudimos reordenar', description: err.message, variant: 'destructive' });
     }
   };
 
@@ -118,14 +130,32 @@ const VenuesTab = () => {
       {loading && <p className="text-muted-foreground text-sm">Cargando salas…</p>}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {venues.map((venue) => (
+        {venues.map((venue, index) => (
           <Card key={venue.id} className="hover:border-gold/50 transition-colors">
             <CardHeader>
-              <CardTitle className="text-lg flex items-center justify-between">
-                {venue.name}
-                <button onClick={() => handleDelete(venue.id)} className="text-muted-foreground hover:text-destructive">
-                  <Trash2 className="h-4 w-4" />
-                </button>
+              <CardTitle className="text-lg flex items-center justify-between gap-2">
+                <span className="truncate">{venue.name}</span>
+                <span className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() => handleMove(venue, 'up')}
+                    disabled={index === 0}
+                    className="text-muted-foreground hover:text-gold disabled:opacity-30 p-1"
+                    title="Subir"
+                  >
+                    <ArrowUp className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => handleMove(venue, 'down')}
+                    disabled={index === venues.length - 1}
+                    className="text-muted-foreground hover:text-gold disabled:opacity-30 p-1"
+                    title="Bajar"
+                  >
+                    <ArrowDown className="h-3.5 w-3.5" />
+                  </button>
+                  <button onClick={() => handleDelete(venue.id)} className="text-muted-foreground hover:text-destructive p-1">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </span>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm text-muted-foreground">

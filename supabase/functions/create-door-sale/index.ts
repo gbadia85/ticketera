@@ -41,7 +41,7 @@ Deno.serve(async (req: Request) => {
     const soldBy = userData.user.email ?? userData.user.id;
 
     const body = await req.json();
-    const { event_id, seat_ids, quantity, first_name, last_name, dni, phone, cash_shift_id, payment_method } = body;
+    const { event_id, seat_ids, quantity, first_name, last_name, dni, phone, cash_shift_id, payment_method, allow_oversell } = body;
 
     const hasSeatIds = Array.isArray(seat_ids) && seat_ids.length > 0;
     const hasQuantity = Number.isInteger(quantity) && quantity > 0;
@@ -56,12 +56,12 @@ Deno.serve(async (req: Request) => {
 
     const { data: shift } = await supabase
       .from('cash_shifts')
-      .select('id, event_id, status')
+      .select('id, status')
       .eq('id', cash_shift_id)
       .maybeSingle();
 
-    if (!shift || shift.status !== 'open' || shift.event_id !== event_id) {
-      return jsonResponse({ error: 'shift_not_open', detail: 'No hay una caja abierta para este evento.' }, 409);
+    if (!shift || shift.status !== 'open') {
+      return jsonResponse({ error: 'shift_not_open', detail: 'No hay ninguna caja abierta.' }, 409);
     }
 
     const sessionId = `door-${crypto.randomUUID()}`;
@@ -78,6 +78,7 @@ Deno.serve(async (req: Request) => {
           p_quantity: quantity,
           p_session_id: sessionId,
           p_hold_minutes: 3,
+          p_allow_oversell: !!allow_oversell,
         });
 
     const { error: holdError } = await holdRpc;

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Helmet } from 'react-helmet';
 import { Link, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { CheckCircle2, Clock, Mail, XCircle } from 'lucide-react';
+import { CheckCircle2, Clock, Mail, Printer, XCircle } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { Button } from '@/components/ui/button';
@@ -53,7 +53,9 @@ const PaymentResultPage = () => {
       </Helmet>
 
       <div className="min-h-screen flex flex-col">
-        <Navbar />
+        <div className="print:hidden">
+          <Navbar />
+        </div>
 
       <div className="container py-16 max-w-lg flex-1">
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
@@ -105,9 +107,28 @@ const PaymentResultPage = () => {
                       </p>
                     )}
                   </div>
-                  <p className="text-xs text-muted-foreground flex items-center justify-center gap-1 mb-6">
+
+                  {result.qr_base64 && (
+                    <div className="mb-6">
+                      <img
+                        src={`data:image/png;base64,${result.qr_base64}`}
+                        alt="Código QR de tu entrada"
+                        className="mx-auto rounded-lg border border-border w-48 h-48"
+                      />
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Podés capturar esta pantalla o imprimirla — mostrá el código en la puerta el día del evento.
+                      </p>
+                    </div>
+                  )}
+
+                  <p className="text-xs text-muted-foreground flex items-center justify-center gap-1 mb-6 print:hidden">
                     <Mail className="h-3.5 w-3.5" /> Revisá tu bandeja de entrada (y spam)
                   </p>
+                  {result.qr_base64 && (
+                    <Button variant="outline" onClick={() => window.print()} className="mb-6 print:hidden">
+                      <Printer className="h-4 w-4 mr-2" /> Imprimir
+                    </Button>
+                  )}
                 </>
               )}
 
@@ -141,7 +162,7 @@ const PaymentResultPage = () => {
                 </>
               )}
 
-              <Button asChild>
+              <Button asChild className="print:hidden">
                 <Link to="/">Volver a la cartelera</Link>
               </Button>
             </CardContent>
@@ -149,7 +170,9 @@ const PaymentResultPage = () => {
         </motion.div>
       </div>
 
-        <Footer />
+        <div className="print:hidden">
+          <Footer />
+        </div>
       </div>
     </>
   );

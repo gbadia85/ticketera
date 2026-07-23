@@ -11,9 +11,17 @@ export async function listVenues() {
   const { data, error } = await supabase
     .from('venues')
     .select('*, venue_images ( id, url, path, sort_order )')
+    .order('sort_order')
     .order('name');
   if (error) throw error;
   return data.map((v) => ({ ...v, venue_images: sortImages(v.venue_images) }));
+}
+
+export async function reorderVenue(venueA, venueB) {
+  const { error: e1 } = await supabase.from('venues').update({ sort_order: venueB.sort_order }).eq('id', venueA.id);
+  if (e1) throw e1;
+  const { error: e2 } = await supabase.from('venues').update({ sort_order: venueA.sort_order }).eq('id', venueB.id);
+  if (e2) throw e2;
 }
 
 export async function getVenuePublic(venueId) {

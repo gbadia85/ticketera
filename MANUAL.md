@@ -93,12 +93,12 @@ lo segundo — si una variable tiene fecha, es una función.
 | Archivo | Para qué sirve |
 |---|---|
 | `AdminLogin.jsx` | Formulario de login (usa Supabase Auth). |
-| `VenuesTab.jsx` | Lista de salas: crear, eliminar, entrar al editor de cada una. |
+| `VenuesTab.jsx` | Lista de salas: crear, eliminar, **reordenar** (flechas arriba/abajo — define el orden en la página pública "Salas"), entrar al editor de cada una. |
 | `VenueEditor.jsx` | El editor de una sala: datos básicos, **descripción**, **imágenes**, el toggle de **entrada general** (sin mapa de butacas), zonas de precio (con paleta de colores acotada), y la grilla de butacas (generar, pintar por zona, marcar pasillos, **mover butacas**, con la **letra de fila** visible al costado). |
 | `EventsTab.jsx` | Lista de eventos (shows), cada uno con sus funciones adentro: crear evento (con su primera función), **agregar más funciones** (otros días/horarios, valida que no choquen con otro evento de la misma sala), editar evento (título/descripción/sponsors) o función (fecha, **Agotado** manual), **gestionar imágenes y sponsors** (a nivel evento, se comparten entre funciones), configurar precios y publicar cada función. |
 | `ImageManager.jsx` | Componente reutilizable de subida/borrado/reorden de imágenes, usado por `EventsTab` (imágenes y sponsors) y `VenueEditor`. |
 | `ReservationsTab.jsx` | Planilla de reservas, filtrable por sala, evento y estado (las expiradas quedan ocultas por defecto), con botón para imprimir. |
-| `DoorSalesTab.jsx` | Venta en puerta: abrís la caja una vez (ya no atada a un evento) y elegís para qué evento/función es cada venta en el momento — butacas en el mapa (o cantidad, en salas de entrada general), método de pago (contado/transferencia/otro), y **devolver entradas** (busca por nombre en cualquier evento, libera la butaca, el cajero carga cuánto devolvió de verdad). Solo el contado cuenta para el arqueo. |
+| `DoorSalesTab.jsx` | Venta en puerta: abrís la caja una vez (ya no atada a un evento) y elegís para qué evento/función es cada venta en el momento — butacas en el mapa (o cantidad, en salas de entrada general, con **sobreventa opcional** avisando cuánto se supera la capacidad), método de pago (contado/transferencia/otro), y **devolver entradas** (busca por nombre en cualquier evento, libera la butaca, el cajero carga cuánto devolvió de verdad). Solo el contado cuenta para el arqueo. |
 | `OpenDoorTab.jsx` | Pestaña "Abrir puerta": habilita (o deshabilita) el ingreso de uno o más eventos a la vez — separado de la venta, para que lo pueda operar otra persona. |
 | `QrScannerTab.jsx` | Lector de QR por cámara (con `jsqr`), pantalla minimalista (solo cámara + botones + "Salir del lector"): al leer, muestra el dato **sin marcar el ingreso todavía** — hay que tocar "OK, dejar entrar". Si hay más de un evento habilitado a la vez, pregunta a cuál está fijado ese lector, y rechaza entradas de otro evento habilitado ("puerta equivocada"). Si el mismo QR se vuelve a leer, alerta y deja "Marcar salida" o "Cancelar ingreso". |
 | `SiteSettingsTab.jsx` | Personalizar el sitio desde el admin: nombre, logo (subida de imagen) y colores — se aplican en todo el sitio al instante al guardar, sin tocar código ni redeployar. |
@@ -158,6 +158,8 @@ probablemente el problema esté en uno de estos archivos.
 | `0009_sponsors_checkin_refunds.sql` | Sponsors por evento (`event_sponsors`); check-in en dos pasos (`lookup_reservation_checkin` / `confirm_reservation_checkin`); `events.checkin_enabled` para habilitar el ingreso solo al evento correspondiente; devolución de entradas (`refund_reservation`, ajusta `close_cash_shift`). |
 | `0010_shows_and_funciones.sql` | **La más grande.** Separa "el evento" (tabla nueva `shows`: título, descripción, imágenes, sponsors, sala) de "cada función" (`events`: fecha/hora puntual — sigue siendo la unidad de venta). Migra los eventos existentes a shows con una función cada uno, sin pérdida de datos. |
 | `0011_shared_cash_shift_and_doors.sql` | La caja deja de estar atada a un evento puntual (se abre una vez, se vende para cualquier evento publicado). El lector de QR se puede "fijar" a un evento — si hay más de uno habilitado, rechaza entradas de otro evento habilitado que no sea el de ese lector ("puerta equivocada"). |
+| `0012_venue_sort_order.sql` | Agrega `sort_order` a las salas, para poder elegir cuál aparece primero en "Salas" (antes era siempre alfabético). |
+| `0013_general_admission_oversell.sql` | Permite sobreventa en salas de entrada general desde la venta en puerta — el cajero confirma explícitamente, avisado de cuánto se supera la capacidad. |
 
 ### `supabase/functions/` — Edge Functions (código de servidor)
 
@@ -188,6 +190,7 @@ probablemente el problema esté en uno de estos archivos.
 - **"Quiero agregar sponsors/auspiciantes a un evento"** → botón con ícono de maletín en la fila del evento, en la pestaña "Eventos" del admin
 - **"El lector de QR dice que el ingreso no está habilitado"** → activá el evento correspondiente en la pestaña "Abrir puerta"
 - **"Necesito devolver una entrada vendida en puerta"** → pestaña "Venta en puerta" → botón "Devolver entrada" (busca por nombre, requiere caja abierta)
+- **"Quiero que una sala aparezca primero que otra en 'Salas'"** → admin → pestaña "Salas" → flechas arriba/abajo en cada tarjeta
 - **"La misma obra se hace varios días, ¿cómo cargo eso?"** → creá el evento una vez, y desde su fila en "Eventos" usá "Agregar función" para cada fecha/horario nuevo — comparten título, imágenes y sponsors, pero cada uno tiene su propio mapa de butacas y precios
 - **"Quiero agregar un dato al formulario de compra"** → `src/pages/CheckoutPage.jsx` + `create_pending_reservation` en `0001_init.sql` (para guardarlo) + `create-payment-preference/index.ts` (si tiene que viajar a Mercado Pago)
 - **"Un botón del admin no hace lo que debería"** → buscá el componente en `src/components/admin/`
