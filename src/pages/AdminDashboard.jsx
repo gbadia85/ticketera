@@ -7,6 +7,7 @@ import VenuesTab from '@/components/admin/VenuesTab';
 import EventsTab from '@/components/admin/EventsTab';
 import ReservationsTab from '@/components/admin/ReservationsTab';
 import DoorSalesTab from '@/components/admin/DoorSalesTab';
+import OpenDoorTab from '@/components/admin/OpenDoorTab';
 import QrScannerTab from '@/components/admin/QrScannerTab';
 import LiveEntryBoard from '@/components/admin/LiveEntryBoard';
 import SiteSettingsTab from '@/components/admin/SiteSettingsTab';
@@ -44,6 +45,7 @@ const AdminDashboard = () => {
               <TabsTrigger value="events">Eventos</TabsTrigger>
               <TabsTrigger value="reservations">Reservas</TabsTrigger>
               <TabsTrigger value="door-sales">Venta en puerta</TabsTrigger>
+              <TabsTrigger value="open-door">Abrir puerta</TabsTrigger>
               <TabsTrigger value="qr-scanner">Lector QR</TabsTrigger>
               <TabsTrigger value="live-board">Pantalla en vivo</TabsTrigger>
               <TabsTrigger value="site-settings">Personalizar sitio</TabsTrigger>
@@ -60,6 +62,9 @@ const AdminDashboard = () => {
             </TabsContent>
             <TabsContent value="door-sales">
               <DoorSalesTab />
+            </TabsContent>
+            <TabsContent value="open-door">
+              <OpenDoorTab />
             </TabsContent>
             <TabsContent value="qr-scanner">
               <QrScannerTab />

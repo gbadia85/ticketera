@@ -65,7 +65,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: event } = await supabase
       .from('events')
-      .select('title, event_date, venues ( name )')
+      .select('event_date, venues ( name ), shows ( title )')
       .eq('id', reservation.event_id)
       .single();
 
@@ -75,7 +75,7 @@ Deno.serve(async (req: Request) => {
       .eq('reservation_id', reservation_id);
 
     const items = (seatRows ?? []).map((row: any) => ({
-      title: `${event?.title ?? 'Entrada'} — ${row.event_seats?.seats?.label ?? 'Butaca'}`,
+      title: `${(event as any)?.shows?.title ?? 'Entrada'} — ${row.event_seats?.seats?.label ?? 'Butaca'}`,
       quantity: 1,
       unit_price: Number(row.price),
       currency_id: 'ARS',

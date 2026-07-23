@@ -223,6 +223,20 @@ tus eventos existentes uno por uno), así que si tenés muchísimos
 eventos cargados puede tardar un par de segundos más que las
 anteriores — es normal.
 
+### 1.2.9 — Aplicar la migración 0011 (caja compartida entre eventos, puerta específica)
+
+Agrega:
+- La caja deja de estar atada a un evento puntual: se abre una sola
+  vez y se puede vender para cualquier evento publicado mientras esté
+  abierta.
+- El lector de QR ahora puede "fijarse" a un evento — si hay más de
+  uno habilitado para el ingreso al mismo tiempo, una entrada de un
+  evento habilitado pero distinto al que está fijado ese lector se
+  rechaza como "puerta equivocada".
+
+Corré **`supabase/migrations/0011_shared_cash_shift_and_doors.sql`**
+completo en el SQL Editor.
+
 ### 1.3 — (Opcional) Cargar datos de ejemplo
 
 Si querés una sala y un evento de prueba ya armados para no cargar todo
@@ -486,6 +500,7 @@ supabase migration repair --status applied 0007
 supabase migration repair --status applied 0008
 supabase migration repair --status applied 0009
 supabase migration repair --status applied 0010
+supabase migration repair --status applied 0011
 ```
 
 Verificá que quedó todo sincronizado:

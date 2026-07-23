@@ -72,7 +72,7 @@ Deno.serve(async (req: Request) => {
     if (resendApiKey && emailFrom && reservation.email) {
       const { data: event } = await supabase
         .from('events')
-        .select('title, event_date, venues ( name )')
+        .select('event_date, venues ( name ), shows ( title )')
         .eq('id', reservation.event_id)
         .single();
 
@@ -95,7 +95,7 @@ Deno.serve(async (req: Request) => {
         to: reservation.email,
         firstName: reservation.first_name,
         siteName: siteSettings?.site_name || 'Butaca',
-        eventTitle: event?.title ?? 'Evento',
+        eventTitle: (event as any)?.shows?.title ?? 'Evento',
         venueName: (event as any)?.venues?.name ?? '',
         eventDate: event?.event_date ?? new Date().toISOString(),
         seatLabels,

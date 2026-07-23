@@ -518,29 +518,28 @@ export async function reorderVenueImage(imageA, imageB) {
 // ---------------------------------------------------------------------
 
 /** Caja actualmente abierta para un evento, o null si no hay ninguna. */
-export async function getOpenCashShift(eventId) {
+export async function getOpenCashShift() {
   const { data, error } = await supabase
     .from('cash_shifts')
     .select('*')
-    .eq('event_id', eventId)
     .eq('status', 'open')
     .maybeSingle();
   if (error) throw error;
   return data;
 }
 
-export async function openCashShift(eventId, openingAmount, openedBy) {
+export async function openCashShift(openingAmount, openedBy) {
   const { data, error } = await supabase
     .from('cash_shifts')
-    .insert({ event_id: eventId, opening_amount: openingAmount, opened_by: openedBy })
+    .insert({ opening_amount: openingAmount, opened_by: openedBy })
     .select()
     .single();
   if (error) {
-    // Ya hay una caja abierta para este evento (índice único) — es una
-    // condición esperada si dos personas la abren casi al mismo tiempo,
-    // así que devolvemos la que ya está abierta en vez de fallar.
+    // Ya hay una caja abierta (índice único) — es una condición
+    // esperada si dos personas la abren casi al mismo tiempo, así que
+    // devolvemos la que ya está abierta en vez de fallar.
     if (error.code === '23505') {
-      return getOpenCashShift(eventId);
+      return getOpenCashShift();
     }
     throw error;
   }
@@ -597,19 +596,21 @@ export async function listEventReservations(eventId) {
 }
 
 /** Consulta una reserva para check-in SIN marcar nada todavía (paso 1: leer el QR). */
-export async function lookupReservationCheckin(reservationId) {
+export async function lookupReservationCheckin(reservationId, expectedEventId = null) {
   const { data, error } = await supabase.rpc('lookup_reservation_checkin', {
     p_reservation_id: reservationId,
+    p_expected_event_id: expectedEventId,
   });
   if (error) throw error;
   return data; // { valid, reason?, already_inside, first_name, last_name, seat_labels, checked_in_at }
 }
 
 /** Confirma el ingreso de verdad (paso 2: cuando la puerta le da el OK). */
-export async function confirmReservationCheckin(reservationId, checkedInBy) {
+export async function confirmReservationCheckin(reservationId, checkedInBy, expectedEventId = null) {
   const { data, error } = await supabase.rpc('confirm_reservation_checkin', {
     p_reservation_id: reservationId,
     p_checked_in_by: checkedInBy,
+    p_expected_event_id: expectedEventId,
   });
   if (error) throw error;
   return data;
@@ -758,17 +759,18 @@ export async function refundReservation(reservationId, refundedAmount, by, cashS
   return data; // { ok, reservation_id, original_amount, refunded_amount }
 }
 
-/** Reservas aprobadas de un evento que se pueden devolver (para buscar en la venta en puerta). */
-export async function searchRefundableReservations(eventId, query) {
+/** Reservas aprobadas que se pueden devolver, buscadas por nombre en
+ * cualquier evento (o filtradas a uno puntual si se pasa eventId). */
+export async function searchRefundableReservations(query, eventId = null) {
   let q = supabase
     .from('reservations')
     .select(
-      'id, first_name, last_name, total_amount, payment_method, created_at, reservation_seats ( event_seats ( seats ( label ) ) )'
+      'id, first_name, last_name, total_amount, payment_method, created_at, event_id, events ( event_date, shows ( title ) ), reservation_seats ( event_seats ( seats ( label ) ) )'
     )
-    .eq('event_id', eventId)
     .eq('status', 'approved')
     .order('created_at', { ascending: false })
     .limit(20);
+  if (eventId) q = q.eq('event_id', eventId);
   if (query) {
     q = q.or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%`);
   }

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, DollarSign, Lock, Minus, Plus, Power, Printer, RotateCcw, Search, Ticket, Unlock, Users } from 'lucide-react';
+import { CheckCircle2, DollarSign, Lock, Minus, Plus, Printer, RotateCcw, Search, Ticket, Unlock, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,7 +19,6 @@ import {
   openCashShift,
   refundReservation,
   searchRefundableReservations,
-  updateFuncion,
 } from '@/lib/api';
 import { createDoorSale } from '@/lib/booking';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
@@ -40,7 +39,7 @@ const DoorSalesTab = () => {
   const [buyer, setBuyer] = useState({ firstName: '', lastName: '', dni: '', phone: '' });
   const [paymentMethod, setPaymentMethod] = useState('efectivo');
   const [submitting, setSubmitting] = useState(false);
-  const [lastSale, setLastSale] = useState(null); // { seat_labels, total, qr_base64, ... }
+  const [lastSale, setLastSale] = useState(null);
 
   const [openingAmount, setOpeningAmount] = useState('0');
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
@@ -52,20 +51,19 @@ const DoorSalesTab = () => {
   const [refundQuery, setRefundQuery] = useState('');
   const [refundResults, setRefundResults] = useState([]);
   const [refundSearching, setRefundSearching] = useState(false);
-  const [refundTarget, setRefundTarget] = useState(null); // reserva elegida para devolver
+  const [refundTarget, setRefundTarget] = useState(null);
   const [refundAmountInput, setRefundAmountInput] = useState('');
   const [refunding, setRefunding] = useState(false);
 
   const { seats } = useEventSeats(eventId || null);
 
-  const reloadEvents = () => {
+  useEffect(() => {
     listAllFunciones().then((data) => setEvents(data.filter((e) => e.status === 'scheduled')));
-  };
-  useEffect(reloadEvents, []);
+  }, []);
 
-  const reloadShift = async (id) => {
+  const reloadShift = async () => {
     setShift(undefined);
-    const openShift = await getOpenCashShift(id);
+    const openShift = await getOpenCashShift();
     setShift(openShift ?? null);
     if (openShift) {
       setSales(await listCashShiftSales(openShift.id));
@@ -77,12 +75,16 @@ const DoorSalesTab = () => {
   };
 
   useEffect(() => {
-    if (!eventId) return;
+    reloadShift();
+  }, []);
+
+  useEffect(() => {
     setSelectedIds(new Set());
     setQuantity(1);
-    setLastSale(null);
-    reloadShift(eventId);
-  }, [eventId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [eventId]);
+
+  const selectedEvent = events.find((e) => e.id === eventId);
+  const isGeneralAdmission = !!selectedEvent?.venues?.general_admission;
 
   const normalizedSeats = useMemo(
     () =>
@@ -113,8 +115,6 @@ const DoorSalesTab = () => {
   }, [normalizedSeats]);
 
   const selectedSeats = normalizedSeats.filter((s) => selectedIds.has(s.seatId));
-  const selectedEvent = events.find((e) => e.id === eventId);
-  const isGeneralAdmission = !!selectedEvent?.venues?.general_admission;
   const availableCount = normalizedSeats.filter((s) => s.status === 'available').length;
   const generalPrice = normalizedSeats[0]?.price ?? 0;
   const total = isGeneralAdmission
@@ -132,20 +132,11 @@ const DoorSalesTab = () => {
 
   const handleOpenShift = async () => {
     try {
-      const created = await openCashShift(eventId, Number(openingAmount) || 0, adminEmail);
+      const created = await openCashShift(Number(openingAmount) || 0, adminEmail);
       setShift(created);
       toast({ title: 'Caja abierta' });
     } catch (err) {
       toast({ title: 'No pudimos abrir la caja', description: err.message, variant: 'destructive' });
-    }
-  };
-
-  const handleToggleCheckin = async (event) => {
-    try {
-      await updateFuncion(event.id, { checkin_enabled: !event.checkin_enabled });
-      reloadEvents();
-    } catch (err) {
-      toast({ title: 'No pudimos actualizar el evento', description: err.message, variant: 'destructive' });
     }
   };
 
@@ -160,6 +151,7 @@ const DoorSalesTab = () => {
       setClosingResult(result);
       setShift(null);
       setSales([]);
+      setRefunds([]);
     } catch (err) {
       toast({ title: 'No pudimos cerrar la caja', description: err.message, variant: 'destructive' });
     }
@@ -218,7 +210,7 @@ const DoorSalesTab = () => {
     e?.preventDefault();
     setRefundSearching(true);
     try {
-      setRefundResults(await searchRefundableReservations(eventId, refundQuery.trim()));
+      setRefundResults(await searchRefundableReservations(refundQuery.trim()));
     } catch (err) {
       toast({ title: 'No pudimos buscar', description: err.message, variant: 'destructive' });
     } finally {
@@ -238,7 +230,7 @@ const DoorSalesTab = () => {
       toast({ title: 'Devolución registrada', description: 'La butaca vuelve a estar disponible para la venta.' });
       setRefundDialogOpen(false);
       setRefundTarget(null);
-      await reloadShift(eventId);
+      await reloadShift();
     } catch (err) {
       const messages = { not_refundable: 'Esta reserva ya no se puede devolver (no está aprobada).' };
       toast({
@@ -253,47 +245,9 @@ const DoorSalesTab = () => {
 
   return (
     <div className="space-y-6">
-      <div className="max-w-sm">
-        <Label>Evento</Label>
-        <select
-          className="w-full mt-1.5 rounded-md border border-input bg-background px-3 py-2 text-sm"
-          value={eventId}
-          onChange={(e) => setEventId(e.target.value)}
-        >
-          <option value="">Elegí un evento…</option>
-          {events.map((e) => (
-            <option key={e.id} value={e.id}>
-              {e.shows?.title} — {formatDateTime(e.event_date)}
-            </option>
-          ))}
-        </select>
-      </div>
+      {shift === undefined && <p className="text-sm text-muted-foreground">Cargando caja…</p>}
 
-      {selectedEvent && (
-        <label className="flex items-start gap-2 text-sm max-w-sm rounded-md border border-border p-3 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={!!selectedEvent.checkin_enabled}
-            onChange={() => handleToggleCheckin(selectedEvent)}
-            className="h-4 w-4 rounded border-input mt-0.5"
-          />
-          <span>
-            <span className="flex items-center gap-1.5 font-medium">
-              <Power className="h-3.5 w-3.5 text-gold" /> Habilitar ingreso a esta función
-            </span>
-            <span className="block text-xs text-muted-foreground">
-              Solo se puede escanear y confirmar el ingreso de entradas de eventos habilitados acá — así nadie entra
-              con el QR de otra función.
-            </span>
-          </span>
-        </label>
-      )}
-
-      {!eventId && <p className="text-sm text-muted-foreground">Elegí un evento para empezar a vender en puerta.</p>}
-
-      {eventId && shift === undefined && <p className="text-sm text-muted-foreground">Cargando caja…</p>}
-
-      {eventId && shift === null && (
+      {shift === null && (
         <Card className="max-w-sm">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
@@ -302,7 +256,8 @@ const DoorSalesTab = () => {
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Para vender en puerta primero abrí la caja de este evento con el monto inicial (para dar vuelto).
+              Abrí la caja con el monto inicial (para dar vuelto). Una vez abierta, podés vender entradas para
+              cualquier evento publicado.
             </p>
             <div className="space-y-2">
               <Label>Monto inicial</Label>
@@ -315,7 +270,7 @@ const DoorSalesTab = () => {
         </Card>
       )}
 
-      {eventId && shift && (
+      {shift && (
         <>
           <Card>
             <CardContent className="p-4 flex flex-wrap items-center justify-between gap-4">
@@ -328,7 +283,7 @@ const DoorSalesTab = () => {
                 </span>
                 {sales.length > cashSales.length && (
                   <span className="text-xs text-muted-foreground">
-                    · {sales.length - cashSales.length} venta{sales.length - cashSales.length === 1 ? '' : 's'} más por transferencia/otro medio (no cuentan para el cajón)
+                    · {sales.length - cashSales.length} venta{sales.length - cashSales.length === 1 ? '' : 's'} más por transferencia/otro medio
                   </span>
                 )}
               </div>
@@ -343,163 +298,178 @@ const DoorSalesTab = () => {
             </CardContent>
           </Card>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">{isGeneralAdmission ? 'Cantidad de entradas' : 'Elegí las butacas'}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {isGeneralAdmission ? (
-                    <div className="space-y-3">
-                      <p className="text-sm text-muted-foreground flex items-center gap-2">
-                        <Users className="h-4 w-4" /> Sala de entrada general — quedan {availableCount} lugares disponibles.
-                      </p>
-                      <div className="flex items-center gap-4">
-                        <button
-                          onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                          className="h-10 w-10 rounded-full border border-border flex items-center justify-center hover:border-gold/60"
-                        >
-                          <Minus className="h-4 w-4" />
-                        </button>
-                        <span className="text-2xl font-display w-10 text-center">{quantity}</span>
-                        <button
-                          onClick={() => setQuantity((q) => Math.min(availableCount || 1, q + 1))}
-                          className="h-10 w-10 rounded-full border border-border flex items-center justify-center hover:border-gold/60"
-                        >
-                          <Plus className="h-4 w-4" />
-                        </button>
-                        <span className="text-sm text-muted-foreground ml-2">{formatCurrency(generalPrice)} c/u</span>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <SeatMap seats={normalizedSeats} selectedIds={selectedIds} onToggle={handleToggle} />
-                      <div className="mt-6">
-                        <SeatMapLegend zones={zonesInEvent} />
-                      </div>
-                    </>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
+          <div className="max-w-sm">
+            <Label>Evento a vender</Label>
+            <select
+              className="w-full mt-1.5 rounded-md border border-input bg-background px-3 py-2 text-sm"
+              value={eventId}
+              onChange={(e) => setEventId(e.target.value)}
+            >
+              <option value="">Elegí un evento…</option>
+              {events.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.shows?.title} — {formatDateTime(e.event_date)}
+                </option>
+              ))}
+            </select>
+          </div>
 
-            <div className="lg:col-span-1 space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Ticket className="h-4 w-4" /> Datos del comprador
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="grid grid-cols-2 gap-2">
-                    <Input placeholder="Nombre" value={buyer.firstName} onChange={(e) => setBuyer({ ...buyer, firstName: e.target.value })} />
-                    <Input placeholder="Apellido" value={buyer.lastName} onChange={(e) => setBuyer({ ...buyer, lastName: e.target.value })} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Input placeholder="DNI (opcional)" value={buyer.dni} onChange={(e) => setBuyer({ ...buyer, dni: e.target.value })} />
-                    <Input placeholder="Teléfono (opcional)" value={buyer.phone} onChange={(e) => setBuyer({ ...buyer, phone: e.target.value })} />
-                  </div>
+          {!eventId && <p className="text-sm text-muted-foreground">Elegí para qué evento vas a vender.</p>}
 
-                  <div className="space-y-1.5">
-                    <span className="text-xs text-muted-foreground">Método de pago</span>
-                    <div className="grid grid-cols-3 gap-2">
-                      {[
-                        { value: 'efectivo', label: 'Contado' },
-                        { value: 'transferencia', label: 'Transferencia' },
-                        { value: 'simulado', label: 'Otro (simulado)' },
-                      ].map((opt) => (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() => setPaymentMethod(opt.value)}
-                          className={`text-xs rounded-md border px-2 py-2 transition-colors ${
-                            paymentMethod === opt.value
-                              ? 'border-gold bg-gold/10 text-gold'
-                              : 'border-border text-muted-foreground hover:border-gold/40'
-                          }`}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
-                    </div>
-                    {paymentMethod === 'simulado' && (
-                      <p className="text-xs text-muted-foreground">
-                        Por ahora queda registrada como simulada — cuando sumemos ese medio de pago real, se va a poder distinguir.
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="border-t border-border pt-3 space-y-1 text-sm">
+          {eventId && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">{isGeneralAdmission ? 'Cantidad de entradas' : 'Elegí las butacas'}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
                     {isGeneralAdmission ? (
-                      <div className="flex justify-between">
-                        <span>{quantity} entrada{quantity > 1 ? 's' : ''}</span>
-                        <span>{formatCurrency(total)}</span>
+                      <div className="space-y-3">
+                        <p className="text-sm text-muted-foreground flex items-center gap-2">
+                          <Users className="h-4 w-4" /> Sala de entrada general — quedan {availableCount} lugares disponibles.
+                        </p>
+                        <div className="flex items-center gap-4">
+                          <button
+                            onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                            className="h-10 w-10 rounded-full border border-border flex items-center justify-center hover:border-gold/60"
+                          >
+                            <Minus className="h-4 w-4" />
+                          </button>
+                          <span className="text-2xl font-display w-10 text-center">{quantity}</span>
+                          <button
+                            onClick={() => setQuantity((q) => Math.min(availableCount || 1, q + 1))}
+                            className="h-10 w-10 rounded-full border border-border flex items-center justify-center hover:border-gold/60"
+                          >
+                            <Plus className="h-4 w-4" />
+                          </button>
+                          <span className="text-sm text-muted-foreground ml-2">{formatCurrency(generalPrice)} c/u</span>
+                        </div>
                       </div>
                     ) : (
                       <>
-                        {selectedSeats.length === 0 && <p className="text-muted-foreground">Ninguna butaca seleccionada.</p>}
-                        {selectedSeats.map((s) => (
-                          <div key={s.seatId} className="flex justify-between">
-                            <span>{s.label}</span>
-                            <span>{formatCurrency(s.price)}</span>
-                          </div>
-                        ))}
+                        <SeatMap seats={normalizedSeats} selectedIds={selectedIds} onToggle={handleToggle} />
+                        <div className="mt-6">
+                          <SeatMapLegend zones={zonesInEvent} />
+                        </div>
                       </>
                     )}
-                    {(isGeneralAdmission ? quantity > 0 : selectedSeats.length > 0) && (
-                      <div className="flex justify-between font-semibold pt-1">
-                        <span>Total (efectivo)</span>
-                        <span className="text-gold">{formatCurrency(total)}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  <Button onClick={handleRegisterSale} disabled={submitting} className="w-full">
-                    {submitting ? 'Registrando…' : 'Registrar venta'}
-                  </Button>
-                </CardContent>
-              </Card>
-
-              {sales.length > 0 && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-sm text-muted-foreground">Ventas de esta caja</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-2 max-h-56 overflow-y-auto">
-                    {sales.map((s) => (
-                      <div key={s.id} className={`flex justify-between text-sm ${s.status === 'refunded' ? 'opacity-50' : ''}`}>
-                        <span>
-                          {s.first_name} {s.last_name}
-                          <span className="ml-2 text-xs text-muted-foreground">
-                            {{ efectivo: 'Contado', transferencia: 'Transferencia', simulado: 'Otro' }[s.payment_method] ?? s.payment_method}
-                            {s.status === 'refunded' ? ' · devuelta' : ''}
-                          </span>
-                        </span>
-                        <span className={s.status === 'refunded' ? 'line-through' : ''}>{formatCurrency(s.total_amount)}</span>
-                      </div>
-                    ))}
                   </CardContent>
                 </Card>
-              )}
+              </div>
 
-              {refunds.length > 0 && (
+              <div className="lg:col-span-1 space-y-4">
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-sm text-muted-foreground">Devoluciones de esta caja</CardTitle>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Ticket className="h-4 w-4" /> Datos del comprador
+                    </CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-2 max-h-56 overflow-y-auto">
-                    {refunds.map((r) => (
-                      <div key={r.id} className="flex justify-between text-sm">
-                        <span>{r.first_name} {r.last_name}</span>
-                        <span className="text-destructive">-{formatCurrency(r.refunded_amount)}</span>
+                  <CardContent className="space-y-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input placeholder="Nombre" value={buyer.firstName} onChange={(e) => setBuyer({ ...buyer, firstName: e.target.value })} />
+                      <Input placeholder="Apellido" value={buyer.lastName} onChange={(e) => setBuyer({ ...buyer, lastName: e.target.value })} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input placeholder="DNI (opcional)" value={buyer.dni} onChange={(e) => setBuyer({ ...buyer, dni: e.target.value })} />
+                      <Input placeholder="Teléfono (opcional)" value={buyer.phone} onChange={(e) => setBuyer({ ...buyer, phone: e.target.value })} />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <span className="text-xs text-muted-foreground">Método de pago</span>
+                      <div className="grid grid-cols-3 gap-2">
+                        {[
+                          { value: 'efectivo', label: 'Contado' },
+                          { value: 'transferencia', label: 'Transferencia' },
+                          { value: 'simulado', label: 'Otro (simulado)' },
+                        ].map((opt) => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => setPaymentMethod(opt.value)}
+                            className={`text-xs rounded-md border px-2 py-2 transition-colors ${
+                              paymentMethod === opt.value
+                                ? 'border-gold bg-gold/10 text-gold'
+                                : 'border-border text-muted-foreground hover:border-gold/40'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
                       </div>
-                    ))}
+                    </div>
+
+                    <div className="border-t border-border pt-3 space-y-1 text-sm">
+                      {isGeneralAdmission ? (
+                        <div className="flex justify-between">
+                          <span>{quantity} entrada{quantity > 1 ? 's' : ''}</span>
+                          <span>{formatCurrency(total)}</span>
+                        </div>
+                      ) : (
+                        <>
+                          {selectedSeats.length === 0 && <p className="text-muted-foreground">Ninguna butaca seleccionada.</p>}
+                          {selectedSeats.map((s) => (
+                            <div key={s.seatId} className="flex justify-between">
+                              <span>{s.label}</span>
+                              <span>{formatCurrency(s.price)}</span>
+                            </div>
+                          ))}
+                        </>
+                      )}
+                      {(isGeneralAdmission ? quantity > 0 : selectedSeats.length > 0) && (
+                        <div className="flex justify-between font-semibold pt-1">
+                          <span>Total ({{ efectivo: 'contado', transferencia: 'transferencia', simulado: 'otro' }[paymentMethod]})</span>
+                          <span className="text-gold">{formatCurrency(total)}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <Button onClick={handleRegisterSale} disabled={submitting} className="w-full">
+                      {submitting ? 'Registrando…' : 'Registrar venta'}
+                    </Button>
                   </CardContent>
                 </Card>
-              )}
+              </div>
             </div>
-          </div>
+          )}
+
+          {sales.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm text-muted-foreground">Ventas de esta caja</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 max-h-56 overflow-y-auto">
+                {sales.map((s) => (
+                  <div key={s.id} className={`flex justify-between text-sm ${s.status === 'refunded' ? 'opacity-50' : ''}`}>
+                    <span>
+                      {s.first_name} {s.last_name}
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        {{ efectivo: 'Contado', transferencia: 'Transferencia', simulado: 'Otro' }[s.payment_method] ?? s.payment_method}
+                        {s.status === 'refunded' ? ' · devuelta' : ''}
+                      </span>
+                    </span>
+                    <span className={s.status === 'refunded' ? 'line-through' : ''}>{formatCurrency(s.total_amount)}</span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {refunds.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm text-muted-foreground">Devoluciones de esta caja</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 max-h-56 overflow-y-auto">
+                {refunds.map((r) => (
+                  <div key={r.id} className="flex justify-between text-sm">
+                    <span>{r.first_name} {r.last_name}</span>
+                    <span className="text-destructive">-{formatCurrency(r.refunded_amount)}</span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
         </>
       )}
 
@@ -555,6 +525,7 @@ const DoorSalesTab = () => {
                   <Search className="h-4 w-4" />
                 </Button>
               </form>
+              <p className="text-xs text-muted-foreground">Busca en cualquier evento publicado, no solo el que tenés elegido arriba.</p>
               <div className="space-y-2 max-h-64 overflow-y-auto">
                 {refundResults.length === 0 && (
                   <p className="text-sm text-muted-foreground">
@@ -572,6 +543,9 @@ const DoorSalesTab = () => {
                       <span>{formatCurrency(r.total_amount)}</span>
                     </div>
                     <p className="text-xs text-muted-foreground">
+                      {r.events?.shows?.title} — {r.events?.event_date ? formatDateTime(r.events.event_date) : ''}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
                       {r.seatLabels?.join(', ') || 'Entrada general'} ·{' '}
                       {{ efectivo: 'Contado', transferencia: 'Transferencia', simulado: 'Otro', mercadopago: 'Mercado Pago' }[r.payment_method] ?? r.payment_method}
                     </p>
@@ -585,7 +559,7 @@ const DoorSalesTab = () => {
             <div className="space-y-3">
               <p className="text-sm">
                 <span className="font-medium">{refundTarget.first_name} {refundTarget.last_name}</span> —{' '}
-                {refundTarget.seatLabels?.join(', ') || 'Entrada general'}
+                {refundTarget.events?.shows?.title} ({refundTarget.seatLabels?.join(', ') || 'Entrada general'})
               </p>
               <p className="text-sm text-muted-foreground">
                 Le corresponde devolver <span className="text-foreground font-semibold">{formatCurrency(refundTarget.total_amount)}</span>.
@@ -626,7 +600,7 @@ const DoorSalesTab = () => {
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
               Lo esperado en el cajón es <span className="text-foreground font-semibold">{formatCurrency(expectedInDrawer)}</span> (inicial +
-              ventas en efectivo). Contá el efectivo real y anotá cuánto hay.
+              ventas en efectivo - devoluciones). Contá el efectivo real y anotá cuánto hay.
             </p>
             <div className="space-y-2">
               <Label>Monto contado</Label>

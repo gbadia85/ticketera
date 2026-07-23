@@ -452,6 +452,9 @@ const EventDetailsPage = () => {
                       {show.venues?.description && (
                         <p className="text-xs text-muted-foreground line-clamp-2">{show.venues.description}</p>
                       )}
+                      <Link to={`/salas/${show.venues?.id}`} className="text-xs text-gold hover:underline inline-block mt-1">
+                        {t.salaSeeMore} →
+                      </Link>
                     </div>
                   </CardContent>
                 </Card>

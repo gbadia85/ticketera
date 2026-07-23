@@ -26,7 +26,9 @@ Deno.serve(async (req: Request) => {
 
     const { data: reservation, error } = await supabase
       .from('reservations')
-      .select('id, status, total_amount, event_id, events ( title, event_date, venues ( name ) )')
+      .select(
+        'id, status, total_amount, event_id, created_at, events ( event_date, venues ( name ), shows ( title ) )'
+      )
       .eq('id', reservationId)
       .single();
 
@@ -44,8 +46,9 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({
       status: reservation.status,
       total: reservation.total_amount,
+      purchased_at: reservation.created_at,
       event: {
-        title: (reservation as any).events?.title,
+        title: (reservation as any).events?.shows?.title,
         date: (reservation as any).events?.event_date,
         venue: (reservation as any).events?.venues?.name,
       },

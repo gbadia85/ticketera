@@ -1,16 +1,18 @@
 import React, { useEffect, useRef, useState } from 'react';
 import jsQR from 'jsqr';
-import { AlertTriangle, Camera, CheckCircle2, LogOut, Pencil, RotateCcw, ThumbsUp, XCircle } from 'lucide-react';
+import { AlertTriangle, Camera, CheckCircle2, DoorOpen, LogOut, Pencil, RotateCcw, ThumbsUp, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAdminAuth } from '@/hooks/useAdminAuth';
 import { useToast } from '@/components/ui/use-toast';
-import { cancelReservationCheckin, confirmReservationCheckin, lookupReservationCheckin, markReservationExit } from '@/lib/api';
+import { cancelReservationCheckin, confirmReservationCheckin, listAllFunciones, lookupReservationCheckin, markReservationExit } from '@/lib/api';
+import { formatDateTime } from '@/lib/utils';
 
 // Pantalla pensada para usarse en el celular, en la puerta: sin menús
-// ni configuración arriba — solo la cámara y el resultado. El panel
-// para habilitar el ingreso de cada evento vive en "Venta en puerta".
+// ni configuración arriba — solo la cámara y el resultado. Para
+// habilitar qué eventos se pueden hacer pasar, ver la pestaña
+// "Abrir puerta".
 const QrScannerTab = () => {
   const { session } = useAdminAuth();
   const { toast } = useToast();
@@ -22,21 +24,32 @@ const QrScannerTab = () => {
   const rafRef = useRef(null);
   const pausedRef = useRef(false);
 
+  const [enabledEvents, setEnabledEvents] = useState(null); // null = cargando
+  const [doorEventId, setDoorEventId] = useState(null); // a qué evento está "fijado" este lector
+
   const [cameraError, setCameraError] = useState(null);
-  const [result, setResult] = useState(null); // { valid, already_inside, confirmed, first_name, last_name, seat_labels, reason }
+  const [result, setResult] = useState(null);
   const [confirming, setConfirming] = useState(false);
   const [manualCode, setManualCode] = useState('');
   const [manualMode, setManualMode] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
 
-  // Pausamos el escaneo mientras haya un resultado en pantalla — así la
-  // persona de la puerta tiene todo el tiempo que necesite para leerlo
-  // y decidir, y solo se retoma cuando ella misma toca "Siguiente".
+  useEffect(() => {
+    listAllFunciones().then((data) => {
+      const enabled = data.filter((e) => e.status === 'scheduled' && e.checkin_enabled);
+      setEnabledEvents(enabled);
+      // Si hay uno solo habilitado, no hace falta preguntar nada.
+      if (enabled.length === 1) setDoorEventId(enabled[0].id);
+    });
+  }, []);
+
+  const doorEvent = enabledEvents?.find((e) => e.id === doorEventId) ?? null;
+
   const processCode = async (code) => {
     if (pausedRef.current) return;
     pausedRef.current = true;
     try {
-      const data = await lookupReservationCheckin(code.trim());
+      const data = await lookupReservationCheckin(code.trim(), doorEventId);
       setResult({ ...data, reservation_id: data.reservation_id ?? code.trim(), confirmed: false });
     } catch (err) {
       setResult({ valid: false, reason: 'error', detail: err.message });
@@ -49,7 +62,7 @@ const QrScannerTab = () => {
   };
 
   useEffect(() => {
-    if (manualMode) return undefined;
+    if (manualMode || !doorEventId) return undefined;
     let cancelled = false;
 
     const start = async () => {
@@ -94,7 +107,7 @@ const QrScannerTab = () => {
       cancelAnimationFrame(rafRef.current);
       streamRef.current?.getTracks().forEach((t) => t.stop());
     };
-  }, [manualMode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [manualMode, doorEventId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleManualSubmit = (e) => {
     e.preventDefault();
@@ -106,11 +119,7 @@ const QrScannerTab = () => {
   const handleConfirmEntry = async () => {
     setConfirming(true);
     try {
-      const data = await confirmReservationCheckin(result.reservation_id, scannedBy);
-      // Ojo: no volvemos a pausar/despausar nada acá — result.confirmed
-      // pasa a true y el botón de "OK" desaparece, así no se puede
-      // volver a tocar por error. Recién con "Siguiente" se habilita
-      // otra lectura.
+      const data = await confirmReservationCheckin(result.reservation_id, scannedBy, doorEventId);
       setResult({ ...result, ...data, confirmed: true });
     } catch (err) {
       toast({ title: 'No pudimos confirmar el ingreso', description: err.message, variant: 'destructive' });
@@ -145,6 +154,54 @@ const QrScannerTab = () => {
       setActionBusy(false);
     }
   };
+
+  const handleExitScanner = () => {
+    resumeScanning();
+    setManualMode(false);
+    setDoorEventId(null);
+  };
+
+  // --- Cargando ---
+  if (enabledEvents === null) {
+    return <p className="text-center text-sm text-muted-foreground">Cargando…</p>;
+  }
+
+  // --- Ningún evento habilitado ---
+  if (enabledEvents.length === 0) {
+    return (
+      <div className="max-w-sm mx-auto text-center space-y-2 py-8">
+        <AlertTriangle className="h-10 w-10 text-gold mx-auto" />
+        <p className="text-sm text-muted-foreground">
+          No hay ningún evento habilitado para el ingreso. Andá a la pestaña "Abrir puerta" y habilitá el evento
+          correspondiente antes de escanear.
+        </p>
+      </div>
+    );
+  }
+
+  // --- Hay más de uno habilitado y todavía no se eligió con cuál trabaja este lector ---
+  if (!doorEventId) {
+    return (
+      <div className="max-w-sm mx-auto space-y-3">
+        <p className="text-sm font-medium text-center">¿Para qué evento estás usando este lector?</p>
+        {enabledEvents.map((e) => (
+          <button
+            key={e.id}
+            onClick={() => setDoorEventId(e.id)}
+            className="w-full text-left rounded-md border border-border p-3 hover:border-gold/60 transition-colors flex items-center gap-3"
+          >
+            <DoorOpen className="h-4 w-4 text-gold shrink-0" />
+            <span className="min-w-0">
+              <span className="block text-sm font-medium truncate">{e.shows?.title}</span>
+              <span className="block text-xs text-muted-foreground">
+                {formatDateTime(e.event_date)} · {e.venues?.name}
+              </span>
+            </span>
+          </button>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-sm mx-auto space-y-3">
@@ -245,8 +302,8 @@ const QrScannerTab = () => {
                 <p className="text-xs text-muted-foreground">
                   {result.reason === 'not_found' && 'No encontramos esa reserva.'}
                   {result.reason === 'not_paid' && 'Esta reserva todavía no está pagada.'}
-                  {result.reason === 'checkin_not_enabled' &&
-                    'El ingreso para el evento de esta entrada no está habilitado. Activalo desde "Venta en puerta".'}
+                  {result.reason === 'checkin_not_enabled' && 'El ingreso para el evento de esta entrada no está habilitado.'}
+                  {result.reason === 'wrong_door' && `Esta entrada es de otro evento habilitado — no de "${doorEvent?.shows?.title}".`}
                   {result.reason === 'error' && (result.detail || 'Ocurrió un error al verificar.')}
                 </p>
               </>
@@ -262,6 +319,13 @@ const QrScannerTab = () => {
       {!result && !manualMode && (
         <p className="text-center text-xs text-muted-foreground">Apuntá la cámara al QR de la entrada.</p>
       )}
+
+      <p className="text-center text-xs text-muted-foreground pt-2">
+        Lector fijado a: <span className="text-foreground">{doorEvent?.shows?.title}</span>
+      </p>
+      <Button variant="ghost" className="w-full text-muted-foreground" onClick={handleExitScanner}>
+        <LogOut className="h-4 w-4 mr-2" /> Salir del lector
+      </Button>
     </div>
   );
 };

@@ -78,12 +78,32 @@ const PaymentResultPage = () => {
                   <p className="text-muted-foreground text-sm mb-6">
                     Te enviamos un email con los detalles de tu compra.
                   </p>
-                  <div className="text-left bg-muted/40 rounded-lg p-4 space-y-2 mb-6">
-                    <p className="font-semibold">{result.event?.title}</p>
-                    <p className="text-sm text-muted-foreground">{result.event?.venue}</p>
-                    <p className="text-sm text-muted-foreground">{formatDateTime(result.event?.date)}</p>
-                    <p className="text-sm">{result.seats?.join(', ')}</p>
-                    <p className="font-semibold text-gold">{formatCurrency(result.total)}</p>
+                  <div className="text-left bg-muted/40 rounded-lg p-4 space-y-2 mb-6 text-sm">
+                    <div className="flex justify-between gap-4">
+                      <span className="text-muted-foreground">Evento</span>
+                      <span className="text-right font-medium">{result.event?.title}</span>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <span className="text-muted-foreground">Sala</span>
+                      <span className="text-right">{result.event?.venue}</span>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <span className="text-muted-foreground">Fecha del evento</span>
+                      <span className="text-right">{formatDateTime(result.event?.date)}</span>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <span className="text-muted-foreground">Butacas</span>
+                      <span className="text-right">{result.seats?.join(', ')}</span>
+                    </div>
+                    <div className="flex justify-between gap-4 border-t border-border pt-2 mt-2">
+                      <span className="font-semibold">Total</span>
+                      <span className="font-semibold text-gold">{formatCurrency(result.total)}</span>
+                    </div>
+                    {result.purchased_at && (
+                      <p className="text-xs text-muted-foreground pt-1">
+                        Comprado el {formatDateTime(result.purchased_at)}
+                      </p>
+                    )}
                   </div>
                   <p className="text-xs text-muted-foreground flex items-center justify-center gap-1 mb-6">
                     <Mail className="h-3.5 w-3.5" /> Revisá tu bandeja de entrada (y spam)
