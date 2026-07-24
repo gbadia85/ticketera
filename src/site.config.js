@@ -23,14 +23,14 @@ export const siteConfig = {
   // IDENTIDAD: nombre, logo, título de pestaña del navegador
   // -------------------------------------------------------------------
   identity: {
-    siteName: 'Butaca',
-    tagline: 'Venta de entradas y mapa de asientos',
+    siteName: 'Aburridos Producciones',
+    tagline: 'Eventos y venta de entradas',
 
     // Título y descripción que aparecen en la pestaña del navegador y
     // en resultados de búsqueda / al compartir el link.
-    metaTitle: 'Butaca — Venta de entradas y mapa de asientos',
+    metaTitle: 'Aburridos Producciones — Venta de entradas y eventos',
     metaDescription:
-      'Comprá entradas y elegí tu butaca para las próximas funciones de teatro.',
+      'Elegí y el evento y compra tu entrada.',
 
     // Logo de la marca (se usa en el Navbar). Dos formas de configurarlo:
     //
@@ -57,19 +57,19 @@ export const siteConfig = {
   // -------------------------------------------------------------------
   texts: {
     navbar: {
-      cartelera: 'Cartelera',
+      cartelera: 'Eventos',
       salas: 'Salas',
       admin: 'Admin',
     },
     home: {
-      title: 'La cartelera de la semana',
-      subtitle: 'Elegí tu función, mirá el mapa de la sala y reservá tu butaca en minutos.',
+      title: 'Los eventos de la semana',
+      subtitle: 'Elegí el evento, tu función, y reservá tu entrada en minutos.',
       allVenuesFilter: 'Todas las salas',
       venueFilterPrefix: 'Ver sala:',
       loading: 'Cargando funciones…',
       loadError: 'No pudimos cargar los eventos. Probá de nuevo más tarde.',
-      emptyState: 'Todavía no hay funciones publicadas.',
-      emptyStateFiltered: 'Esta sala no tiene funciones publicadas por ahora.',
+      emptyState: 'Todavía no hay eventos publicadas.',
+      emptyStateFiltered: 'Esta sala no tiene eventos publicados por ahora.',
     },
     eventDetails: {
       chooseSeatsTitle: 'Elegí tus butacas',
@@ -188,12 +188,12 @@ export const siteConfig = {
       address: '', // ej: 'Av. Corrientes 1234, CABA'
     },
     social: [
-      { platform: 'instagram', url: '' },
+      { platform: 'instagram', url: 'xxx' },
       { platform: 'facebook', url: '' },
       { platform: 'x', url: '' },
-      { platform: 'youtube', url: '' },
+      { platform: 'youtube', url: 'xxx' },
       { platform: 'tiktok', url: '' },
-      { platform: 'whatsapp', url: '' },
+      { platform: 'whatsapp', url: 'xxx' },
     ],
   },
 
