@@ -124,6 +124,10 @@ const DoorSalesTab = () => {
 
   const selectedSeats = normalizedSeats.filter((s) => selectedIds.has(s.seatId));
   const availableCount = normalizedSeats.filter((s) => s.status === 'available').length;
+  const soldCount = normalizedSeats.filter((s) => s.status === 'sold').length;
+  const overCount = normalizedSeats.filter(
+    (s) => s.status === 'sold' && (s.label?.includes('(sobreventa)') || s.zoneName === 'De pie')
+  ).length;
   const generalPrice = normalizedSeats[0]?.price ?? 0;
   const standingTotal = standingQuantity * (Number(standingPrice) || 0);
   const total = standingMode
@@ -351,6 +355,27 @@ const DoorSalesTab = () => {
           </div>
 
           {!eventId && <p className="text-sm text-muted-foreground">Elegí para qué evento vas a vender.</p>}
+
+          {eventId && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+              <div className="rounded-md border border-border p-3">
+                <p className="text-xl font-display">{soldCount}</p>
+                <p className="text-xs text-muted-foreground">vendidas</p>
+              </div>
+              <div className="rounded-md border border-border p-3">
+                <p className="text-xl font-display">{availableCount}</p>
+                <p className="text-xs text-muted-foreground">disponibles</p>
+              </div>
+              <div className={`rounded-md border p-3 ${overCount > 0 ? 'border-destructive/50' : 'border-border'}`}>
+                <p className={`text-xl font-display ${overCount > 0 ? 'text-destructive' : ''}`}>{overCount}</p>
+                <p className="text-xs text-muted-foreground">sobrevendidas</p>
+              </div>
+              <div className="rounded-md border border-border p-3">
+                <p className="text-xl font-display">{soldCount + availableCount}</p>
+                <p className="text-xs text-muted-foreground">capacidad actual</p>
+              </div>
+            </div>
+          )}
 
           {eventId && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

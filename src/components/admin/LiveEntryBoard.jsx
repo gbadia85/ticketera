@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Clock, LogIn, RotateCcw, Users } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock, LogIn, RotateCcw, Ticket, Users } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useEventSeats } from '@/hooks/useEventSeats';
@@ -47,6 +47,10 @@ const LiveEntryBoard = () => {
   }, [normalizedSeats]);
 
   const soldCount = normalizedSeats.filter((s) => s.status === 'sold').length;
+  const availableCount = normalizedSeats.filter((s) => s.status === 'available').length;
+  const overCount = normalizedSeats.filter(
+    (s) => s.status === 'sold' && (s.label?.includes('(sobreventa)') || s.zoneName === 'De pie')
+  ).length;
   const insideCount = reservations.filter((r) => r.entry_status === 'inside').length;
   const everEnteredCount = reservations.filter((r) => r.entry_status === 'inside' || r.entry_status === 'outside').length;
   const ticketsCount = reservations.reduce((sum, r) => sum + (r.seatLabels?.length || 0), 0);
@@ -77,33 +81,58 @@ const LiveEntryBoard = () => {
 
       {eventId && (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
             <Card>
               <CardContent className="p-4 flex items-center gap-3">
-                <Users className="h-8 w-8 text-gold" />
+                <Ticket className="h-7 w-7 text-gold shrink-0" />
+                <div>
+                  <p className="text-2xl font-display">{reservations.length}</p>
+                  <p className="text-xs text-muted-foreground">ventas / reservas</p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4 flex items-center gap-3">
+                <Users className="h-7 w-7 text-gold shrink-0" />
                 <div>
                   <p className="text-2xl font-display">{soldCount}</p>
-                  <p className="text-xs text-muted-foreground">butacas vendidas</p>
+                  <p className="text-xs text-muted-foreground">butacas vendidas ({ticketsCount} en total)</p>
                 </div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4 flex items-center gap-3">
-                <LogIn className="h-8 w-8 text-success" />
+                <CheckCircle2 className="h-7 w-7 text-success shrink-0" />
                 <div>
-                  <p className="text-2xl font-display">
-                    {insideCount} <span className="text-sm text-muted-foreground font-sans">/ {reservations.length}</span>
-                  </p>
-                  <p className="text-xs text-muted-foreground">adentro ahora ({everEnteredCount} entraron en total)</p>
+                  <p className="text-2xl font-display">{availableCount}</p>
+                  <p className="text-xs text-muted-foreground">disponibles para vender</p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className={overCount > 0 ? 'border-destructive/50' : ''}>
+              <CardContent className="p-4 flex items-center gap-3">
+                <AlertTriangle className={`h-7 w-7 shrink-0 ${overCount > 0 ? 'text-destructive' : 'text-muted-foreground'}`} />
+                <div>
+                  <p className="text-2xl font-display">{overCount}</p>
+                  <p className="text-xs text-muted-foreground">sobrevendidas (de pie / sin butaca)</p>
                 </div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4 flex items-center gap-3">
-                <CheckCircle2 className="h-8 w-8 text-gold" />
+                <LogIn className="h-7 w-7 text-success shrink-0" />
                 <div>
-                  <p className="text-2xl font-display">{ticketsCount}</p>
-                  <p className="text-xs text-muted-foreground">butacas en entradas vendidas</p>
+                  <p className="text-2xl font-display">{insideCount}</p>
+                  <p className="text-xs text-muted-foreground">personas adentro ahora</p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4 flex items-center gap-3">
+                <Clock className="h-7 w-7 text-gold shrink-0" />
+                <div>
+                  <p className="text-2xl font-display">{everEnteredCount}</p>
+                  <p className="text-xs text-muted-foreground">entraron alguna vez (con las que ya salieron)</p>
                 </div>
               </CardContent>
             </Card>

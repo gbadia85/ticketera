@@ -98,12 +98,12 @@ lo segundo — si una variable tiene fecha, es una función.
 | `EventsTab.jsx` | Lista de eventos (shows), cada uno con sus funciones adentro: crear evento (con su primera función), **agregar más funciones** (otros días/horarios, valida que no choquen con otro evento de la misma sala), editar evento (título/descripción/sponsors) o función (fecha, **Agotado** manual), **gestionar imágenes y sponsors** (a nivel evento, se comparten entre funciones), configurar precios y publicar cada función. |
 | `ImageManager.jsx` | Componente reutilizable de subida/borrado/reorden de imágenes, usado por `EventsTab` (imágenes y sponsors) y `VenueEditor`. |
 | `ReservationsTab.jsx` | Planilla de reservas, filtrable por sala, evento y estado (las expiradas quedan ocultas por defecto), con botón para imprimir. |
-| `DoorSalesTab.jsx` | Venta en puerta: abrís la caja una vez (ya no atada a un evento) y elegís para qué evento/función es cada venta en el momento — butacas en el mapa (o cantidad, en salas de entrada general, con **sobreventa opcional**; o **de pie, sin butaca**, en salas con mapa, ambas avisando antes de confirmar), método de pago (contado/transferencia/otro), y **devolver entradas** (busca por nombre en cualquier evento, libera la butaca, el cajero carga cuánto devolvió de verdad). Solo el contado cuenta para el arqueo. |
+| `DoorSalesTab.jsx` | Venta en puerta: abrís la caja una vez (ya no atada a un evento) y elegís para qué evento/función es cada venta en el momento — con una barra de totales (vendidas, disponibles, sobrevendidas, capacidad actual) siempre visible — butacas en el mapa (o cantidad, en salas de entrada general, con **sobreventa opcional**; o **de pie, sin butaca**, en salas con mapa, ambas avisando antes de confirmar), método de pago (contado/transferencia/otro), y **devolver entradas** (busca por nombre en cualquier evento, libera la butaca, el cajero carga cuánto devolvió de verdad). Solo el contado cuenta para el arqueo. |
 | `OpenDoorTab.jsx` | Pestaña "Abrir puerta": habilita (o deshabilita) el ingreso de uno o más eventos a la vez — separado de la venta, para que lo pueda operar otra persona. |
 | `QrScannerTab.jsx` | Lector de QR por cámara (con `jsqr`), pantalla minimalista (solo cámara + botones + "Salir del lector"): al leer, muestra el dato **sin marcar el ingreso todavía** — hay que tocar "OK, dejar entrar". Si hay más de un evento habilitado a la vez, pregunta a cuál está fijado ese lector, y rechaza entradas de otro evento habilitado ("puerta equivocada"). Si el mismo QR se vuelve a leer, alerta y deja "Marcar salida" o "Cancelar ingreso". |
 | `SiteSettingsTab.jsx` | Personalizar el sitio desde el admin: nombre, logo (subida de imagen) y colores — se aplican en todo el sitio al instante al guardar, sin tocar código ni redeployar. |
 | `DangerZoneTab.jsx` | Pestaña "Peligro": eliminar reservas expiradas, vaciar imágenes subidas, borrar todos los eventos / todas las salas / resetear la base completa — todas con confirmación escrita, y las que corresponde también vacían los archivos de Storage (no solo las filas). |
-| `LiveEntryBoard.jsx` | Pantalla en vivo para el día del evento: mapa de butacas vendidas + lista de ingresos en tiempo real (adentro/salió), para la persona de boletería — con botón de actualizar manual por las dudas. |
+| `LiveEntryBoard.jsx` | Pantalla en vivo para el día del evento: totales claros (ventas, vendidas, disponibles, sobrevendidas, adentro ahora, entraron alguna vez), mapa de butacas vendidas y lista de ingresos en tiempo real (adentro/salió) — con recarga automática de respaldo cada 8s además del tiempo real, y botón de actualizar manual. |
 
 #### `src/components/ui/`
 
@@ -128,8 +128,8 @@ probablemente el problema esté en uno de estos archivos.
 
 | Archivo | Para qué sirve |
 |---|---|
-| `useEventSeats.js` | Carga las butacas de un evento y se suscribe a Supabase Realtime: si otro comprador retiene/compra algo, el mapa se actualiza solo. |
-| `useEventCheckins.js` | Carga las reservas aprobadas de un evento (con su estado de ingreso) y se suscribe a Realtime — la usa la pantalla en vivo para actualizarse sola cuando alguien escanea un QR en la puerta. |
+| `useEventSeats.js` | Carga las butacas de un evento y se suscribe a Supabase Realtime: si otro comprador retiene/compra algo, el mapa se actualiza solo. Además, recarga sola cada 8 segundos como respaldo (el tiempo real filtrado a veces no llega). |
+| `useEventCheckins.js` | Carga las reservas aprobadas de un evento (con su estado de ingreso) y se suscribe a Realtime — la usa la pantalla en vivo para actualizarse sola cuando alguien escanea un QR en la puerta. También recarga cada 8 segundos como respaldo. |
 | `useCountdown.js` | Cuenta regresiva del hold de 10 minutos en el checkout. |
 | `useAdminAuth.js` | Maneja la sesión de Supabase Auth del panel de administración (login/logout). |
 

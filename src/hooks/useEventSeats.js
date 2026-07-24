@@ -76,5 +76,16 @@ export function useEventSeats(eventId) {
     };
   }, [eventId, reload]);
 
+  // Respaldo además del tiempo real: si por lo que sea un evento de
+  // Realtime no llega (pasa, sobre todo con updates filtrados), esto
+  // se autocorrige solo en unos segundos — importante acá porque de
+  // esta cuenta depende si se avisa una sobreventa que en realidad no
+  // es tal (por ejemplo, después de una devolución).
+  useEffect(() => {
+    if (!eventId) return;
+    const interval = setInterval(reload, 8000);
+    return () => clearInterval(interval);
+  }, [eventId, reload]);
+
   return { seats, loading, error, reload };
 }
